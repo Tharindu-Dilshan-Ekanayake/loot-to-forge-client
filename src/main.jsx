@@ -4,6 +4,9 @@ import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
 import BloxityProvider from './bloxity/BloxityProvider.jsx'
 import './index.css'
+import './ui/extras.css'
+// Flags phones and tablets (the `touch` class) before anything renders.
+import './ui/device'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -4,8 +4,12 @@ import { AdditiveBlending } from 'three'
 
 import { bagById } from '../../shared/gameData'
 import { local } from '../bus'
+import Merged from '../Merged'
 import { glowTexture, mat } from '../textures'
 import { Glow } from '../world/props'
+
+/** Marks a part that moves on its own, so the bag's merge leaves it out. */
+const NO_MERGE = { noMerge: true }
 
 /**
  * Backpacks, built from boxes in world units (the avatar is ~1.8 tall). The origin
@@ -132,7 +136,7 @@ function Dragon() {
       <Box size={[0.1, 0.1, 0.04]} position={[0, 0.2, -0.3]} m={glow('#ffb000', 1.2)} />
       {[-1, 1].map((s, i) => (
         <group key={s}>
-          <group ref={wings[i]} position={[s * 0.24, 0.12, -0.2]}>
+          <group ref={wings[i]} position={[s * 0.24, 0.12, -0.2]} userData={NO_MERGE}>
             <Box size={[0.5, 0.04, 0.3]} position={[s * 0.27, 0.05, 0]} rotation={[0, 0, s * 0.35]} m="#7a0a12" />
             <Box size={[0.4, 0.035, 0.26]} position={[s * 0.32, -0.12, 0]} rotation={[0, 0, s * 0.8]} m="#b8141e" />
           </group>
@@ -155,7 +159,7 @@ function VoidBag() {
       <Straps color="#12031f" w={0.56} />
       <Box size={[0.56, 0.62, 0.28]} position={[0, 0, -0.14]} m="#1b0630" />
       <Box size={[0.58, 0.06, 0.3]} position={[0, 0.3, -0.14]} m={glow('#b400ff', 0.8)} />
-      <group ref={ring} position={[0, -0.02, -0.3]}>
+      <group ref={ring} position={[0, -0.02, -0.3]} userData={NO_MERGE}>
         <mesh material={glow('#ff4df2', 1.3)}>
           <torusGeometry args={[0.17, 0.025, 6, 24]} />
         </mesh>
@@ -189,7 +193,7 @@ function Celestial() {
       {[-1, 1].map((s) => (
         <Box key={s} size={[0.3, 0.035, 0.18]} position={[s * 0.4, 0.12, -0.16]} rotation={[0, 0, s * 0.45]} m="#ffffff" />
       ))}
-      <group ref={halo} position={[0, 0.5, -0.14]}>
+      <group ref={halo} position={[0, 0.5, -0.14]} userData={NO_MERGE}>
         <mesh rotation={[Math.PI / 2, 0, 0]} material={glow('#ffd23b', 1.4)}>
           <torusGeometry args={[0.2, 0.025, 6, 24]} />
         </mesh>
@@ -231,7 +235,10 @@ export function BagModel({ bagId, isLocal = false }) {
   })
   return (
     <group ref={pop}>
-      <Model />
+      {/* Rigid boxes drawn merged; the flapping and spinning bits opt out (NO_MERGE). */}
+      <Merged>
+        <Model />
+      </Merged>
       {isLocal && (
         <sprite ref={flash} position={[0, 0, -0.25]} visible={false}>
           <spriteMaterial map={glowTexture()} color="#fff6c0" transparent opacity={0} depthWrite={false} blending={AdditiveBlending} />

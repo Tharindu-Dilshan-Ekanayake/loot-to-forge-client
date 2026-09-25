@@ -8,6 +8,7 @@ import Hud from './ui/Hud'
 import { ForgeCinematic } from './ui/panels/ForgePanel'
 import { PanelHost } from './ui/panels/MiscPanels'
 import LoadingScreen from './ui/LoadingScreen'
+import TouchControls from './ui/TouchControls'
 
 /**
  * World labels and 3D signs are drawn with the Fredoka web font, so wait for it
@@ -63,6 +64,7 @@ function App() {
       {playing && (
         <>
           <Hud />
+          <TouchControls />
           <PanelHost />
           <ForgeCinematic />
         </>

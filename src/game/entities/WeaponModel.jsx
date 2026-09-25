@@ -2,6 +2,7 @@ import { useMemo } from 'react'
 import { Color, ExtrudeGeometry, MeshStandardMaterial, Shape } from 'three'
 
 import { RARITY_INDEX, WEAPONS } from '../../shared/gameData'
+import Merged from '../Merged'
 import { weaponLook } from '../weaponTier'
 import { Glow } from '../world/props'
 
@@ -257,7 +258,9 @@ export function WeaponModel({ weaponId, scale = 1, tier = 0, ...rest }) {
 
   return (
     <group scale={scale} {...rest}>
-      {body}
+      {/* A dozen small parts, but rigid and never recoloured once built: drawn
+          merged, one draw per kind of finish. */}
+      <Merged immutable>{body}</Merged>
       {(m.rarity >= 3 || m.tier.index > 0) && (
         <Glow
           position={[0, tipY * 0.6, 0]}

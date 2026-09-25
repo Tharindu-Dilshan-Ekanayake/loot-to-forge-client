@@ -26,6 +26,7 @@ import {
   EyeIcon,
   GearIcon,
   GiftIcon,
+  GuideIcon,
   HandIcon,
   HeartIcon,
   ItemIcon,
@@ -81,7 +82,7 @@ function MenuButtons() {
   const rebirthPct = profile ? Math.min(100, Math.floor((profile.level / profile.rebirthReq) * 100)) : 0
 
   return (
-    <div className="hud-hideable pointer-events-auto absolute left-5 top-[27%] grid grid-cols-2 gap-6">
+    <div className="hud-menu hud-hideable pointer-events-auto absolute left-5 top-[27%] grid grid-cols-2 gap-6">
       <BigButton bg="bg-shop" icon={<CartIcon size={62} />} label="Shop" hotkey={HOTKEYS.shop} onClick={() => open('shop')} />
       <div className="relative">
         <BigButton
@@ -138,7 +139,7 @@ function Stats() {
   if (!profile) return null
   const full = profile.ores.length >= profile.capacity
   return (
-    <div className="hud-hideable pointer-events-none absolute bottom-6 left-5 flex flex-col gap-2">
+    <div className="hud-stats hud-hideable pointer-events-none absolute bottom-6 left-5 flex flex-col gap-2">
       <StatRow icon={<BackpackIcon size={56} />} id="hud-backpack" pulse={full}>
         <span key={bump} className={`inline-block ${bump ? 'pop-in' : ''}`} style={{ color: full ? '#ff6a5e' : undefined }}>
           {profile.ores.length}/{profile.capacity}
@@ -208,7 +209,13 @@ function TutorialStrip() {
 
 /** The player's picture and name, as a pill at the top right. */
 function PlayerTag() {
-  const { identity, isLoggedIn, avatar } = useBloxity()
+  const { identity, isLoggedIn, avatar, login } = useBloxity()
+  // Logging in from here mid-game: rejoin as the account, so its own progress
+  // loads. Only after a tap, since the session also resolves by itself at start-up.
+  const tappedLogin = useRef(false)
+  useEffect(() => {
+    if (isLoggedIn && tappedLogin.current) window.location.reload()
+  }, [isLoggedIn])
   const name = useGame((s) => s.profile?.name) || guestName()
   // The Bloxity picture when signed in, else the face off the character's own skin.
   const [face, setFace] = useState(null)
@@ -221,8 +228,23 @@ function PlayerTag() {
     }
   }, [skinId])
   const pfp = (isLoggedIn && identityAvatarUrl(identity)) || face
+  // Guests can tap their tag to log in; there's no log-out from here.
+  const Tag = isLoggedIn ? 'div' : 'button'
   return (
-    <div className="flex h-[58px] items-center gap-3 self-center rounded-full bg-[#2a2c3a]/90 py-1 pl-1 pr-5 shadow-[0_3px_0_rgba(0,0,0,0.35)]">
+    <Tag
+      {...(isLoggedIn
+        ? {}
+        : {
+            type: 'button',
+            title: 'Log in to Bloxity',
+            onClick: () => {
+              sfx('click')
+              tappedLogin.current = true
+              login()
+            },
+          })}
+      className={`flex h-[58px] items-center gap-3 self-center rounded-full bg-[#2a2c3a]/90 py-1 pl-1 pr-5 shadow-[0_3px_0_rgba(0,0,0,0.35)] ${isLoggedIn ? '' : 'transition hover:brightness-125'}`}
+    >
       {pfp ? (
         <img src={pfp} alt="" className="h-[50px] w-[50px] rounded-full bg-[#5a6070] object-cover" style={{ imageRendering: 'pixelated' }} />
       ) : (
@@ -230,8 +252,15 @@ function PlayerTag() {
           <St className="text-2xl">{name[0]?.toUpperCase()}</St>
         </div>
       )}
-      <St className="text-2xl">{name}</St>
-    </div>
+      <div className="flex flex-col leading-none">
+        <St className="text-2xl">{name}</St>
+        {!isLoggedIn && (
+          <St className="st-thin mt-1 text-sm" style={{ color: '#8fe0ff' }}>
+            Tap to log in
+          </St>
+        )}
+      </div>
+    </Tag>
   )
 }
 
@@ -244,11 +273,19 @@ function TopRight() {
   const gift = profile && giftReady(profile)
   const swapTo = swapTarget(profile)
   const canSwap = Boolean(bestOfClass(profile, swapTo))
+  // New players see a "!" on the guide until they've opened it once.
+  const [guideSeen, setGuideSeen] = useState(() => {
+    try {
+      return Boolean(localStorage.getItem('ltf.guideSeen'))
+    } catch {
+      return true
+    }
+  })
   return (
     <div className="pointer-events-auto absolute right-4 top-3 flex flex-col items-end gap-3">
       <PlayerTag />
       {/* One button under another down the right edge, with room between them. */}
-      <div className="mt-2 flex flex-col items-end gap-5">
+      <div className="hud-right-col mt-2 flex flex-col items-end gap-5">
         <button type="button" className="icon-btn hud-hideable" title={`${muted ? 'Sound on' : 'Sound off'} (N)`} onClick={toggleSound}>
           <MusicIcon off={muted} />
           <KeyBadge k={ACTION_KEYS.sound} small />
@@ -287,6 +324,27 @@ function TopRight() {
           }}
         >
           <EyeIcon off={hideHud} />
+        </button>
+        <button
+          type="button"
+          className="icon-btn guide-btn hud-hideable"
+          title={`Guide (${HOTKEYS.guide})`}
+          onClick={() => {
+            if (!guideSeen) {
+              setGuideSeen(true)
+              try {
+                localStorage.setItem('ltf.guideSeen', '1')
+              } catch {
+                // Blocked storage: the badge just comes back next visit.
+              }
+            }
+            open('guide')
+          }}
+        >
+          <GuideIcon />
+          <span className="guide-btn-label">Guide</span>
+          <KeyBadge k={HOTKEYS.guide} small />
+          {!guideSeen && <span className="badge-bang" style={{ fontSize: 28, top: -14, right: -6 }}>!</span>}
         </button>
       </div>
     </div>
@@ -389,14 +447,30 @@ function DamageStat({ damage }) {
   )
 }
 
+/**
+ * The local player's health off the room state, polled but only re-rendering
+ * when it actually changes (it sits still most of the time).
+ */
+function usePlayerHp(sessionId, fallback) {
+  const [hp, setHp] = useState(fallback)
+  useEffect(() => {
+    const read = () => {
+      const v = Math.ceil(getRoom()?.state.players.get(sessionId)?.hp ?? fallback)
+      setHp((old) => (old === v ? old : v))
+    }
+    read()
+    const id = setInterval(read, 120)
+    return () => clearInterval(id)
+  }, [sessionId, fallback])
+  return hp
+}
+
 function BottomBars() {
   const profile = useGame((s) => s.profile)
   const sessionId = useGame((s) => s.sessionId)
   const autoAttack = useGame((s) => s.autoAttack)
-  useTicker(120)
+  const hp = usePlayerHp(sessionId, profile?.maxHp ?? 100)
   if (!profile) return null
-  const me = getRoom()?.state.players.get(sessionId)
-  const hp = Math.ceil(me?.hp ?? profile.maxHp)
   const maxHp = profile.maxHp
 
   return (
@@ -646,20 +720,6 @@ function LootFlyers() {
   ))
 }
 
-function TouchAttack() {
-  const [coarse] = useState(() => window.matchMedia?.('(pointer: coarse)').matches)
-  if (!coarse) return null
-  return (
-    <button
-      type="button"
-      className="hud-btn bg-rebirth pointer-events-auto absolute bottom-40 right-8 grid h-28 w-28 place-items-center rounded-full"
-      onPointerDown={() => window.dispatchEvent(new Event('ltf:attack'))}
-    >
-      <SwordIcon size={64} color="#fff" />
-    </button>
-  )
-}
-
 /** Keyboard shortcuts for panels. */
 function Hotkeys() {
   useEffect(() => {
@@ -732,7 +792,6 @@ export function Hud() {
           <Stats />
           <BottomBars />
           <InteractPrompt />
-          <TouchAttack />
         </>
       )}
       {!focused && !panel && <TutorialStrip />}

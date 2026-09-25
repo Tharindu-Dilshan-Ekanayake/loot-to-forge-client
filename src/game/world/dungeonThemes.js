@@ -25,4 +25,15 @@ export const DUNGEON_THEMES = {
   shadow: { floor: 'shadowFloor', path: 'cryptFloor', trim: '#8a6aff', wall: 'shadowWall', cap: '#3a2a5a', accent: '#8a6aff', deco: 'crypt' },
   dragon: { floor: 'lavaRock', path: 'magma', trim: '#ff9a1f', wall: 'dragonWall', cap: 'gold', accent: '#ff7a1f', deco: 'inferno' },
   celestial: { floor: 'celestialFloor', path: 'gold', trim: '#ffe07a', wall: 'celestialWall', cap: 'gold', accent: '#ffe07a', deco: 'void' },
+  // Stages 21–30
+  marsh: { floor: 'marshFloor', path: 'campDirt', trim: '#7aff4a', wall: 'marshWall', cap: 'grassDark', accent: '#9dff5a', deco: 'marsh' },
+  bonewaste: { floor: 'boneFloor', path: 'sand', trim: '#f4efe2', wall: 'boneWall', cap: 'boneWall', accent: '#ff5a3b', deco: 'bonewaste' },
+  plague: { floor: 'plagueFloor', path: 'stoneDark', trim: '#9dff3a', wall: 'plagueWall', cap: 'stoneDark', accent: '#a8ff3a', deco: 'plague' },
+  fortress: { floor: 'ironFloor', path: 'metalDark', trim: '#ff9a1f', wall: 'fortressWall', cap: 'metalDark', accent: '#ff9a1f', deco: 'fortress' },
+  abyss: { floor: 'abyssFloor', path: 'stoneDark', trim: '#3ef6ff', wall: 'abyssWall', cap: '#0a1622', accent: '#3ef6ff', deco: 'abyss' },
+  grove: { floor: 'groveFloor', path: 'campDirt', trim: '#d24dff', wall: 'groveWall', cap: '#2e1a2e', accent: '#e05aff', deco: 'grove' },
+  cathedral: { floor: 'bloodFloor', path: 'cryptFloor', trim: '#ff2d3d', wall: 'cathedralWall', cap: 'gold', accent: '#ff2d3d', deco: 'cathedral' },
+  ashland: { floor: 'ashFloor', path: 'magma', trim: '#ff7a1f', wall: 'ashWall', cap: '#1c1818', accent: '#ff6a1f', deco: 'ashland' },
+  eclipse: { floor: 'eclipseFloor', path: 'gold', trim: '#ffb000', wall: 'eclipseWall', cap: 'gold', accent: '#ffb000', deco: 'eclipse' },
+  endless: { floor: 'endlessFloor', path: 'voidWall', trim: '#ff2bd6', wall: 'endlessWall', cap: '#1b0630', accent: '#ff2bd6', deco: 'endless' },
 }

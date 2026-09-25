@@ -272,6 +272,27 @@ const TEXTURE_DEFS = {
   dragonWall: (ctx) => drawBricks(ctx, '#6a3222', { rows: 4, cols: 2, mortar: '#4a2014', studs: true }),
   celestialFloor: (ctx) => drawStuds(ctx, '#f1eeff'),
   celestialWall: (ctx) => drawBricks(ctx, '#c3cbff', { rows: 4, cols: 2, mortar: '#a3acec', studs: true }),
+  // Stages 21–30: the deep dungeon, darker with every stage.
+  marshFloor: (ctx) => drawStuds(ctx, '#3d4a2c'),
+  marshWall: (ctx) => drawBricks(ctx, '#4a4a2e', { rows: 4, cols: 2, mortar: '#2f2f1c', studs: true }),
+  boneFloor: (ctx) => drawStuds(ctx, '#cfc6ae', { cells: 2, border: 0.1, inner: 0.16 }),
+  boneWall: (ctx) => drawBricks(ctx, '#b0a68e', { rows: 4, cols: 2, mortar: '#857b63' }),
+  plagueFloor: (ctx) => drawStuds(ctx, '#4a5a3a', { cells: 2, border: 0.1, inner: 0.16 }),
+  plagueWall: (ctx) => drawBricks(ctx, '#3a4232', { rows: 4, cols: 2, mortar: '#262c20', studs: true }),
+  ironFloor: (ctx) => drawMetalPlate(ctx, '#6b7280'),
+  fortressWall: (ctx) => drawBricks(ctx, '#4a4f5c', { rows: 4, cols: 2, mortar: '#33373f', studs: true }),
+  abyssFloor: (ctx) => drawStuds(ctx, '#1f3a4a'),
+  abyssWall: (ctx) => drawBricks(ctx, '#14283a', { rows: 4, cols: 2, mortar: '#0a1622', studs: true }),
+  groveFloor: (ctx) => drawStuds(ctx, '#3a2a3a'),
+  groveWall: (ctx) => drawBricks(ctx, '#4a2a4a', { rows: 4, cols: 2, mortar: '#2e1a2e', studs: true }),
+  bloodFloor: (ctx) => drawStuds(ctx, '#5a1a24', { cells: 2, border: 0.1, inner: 0.16 }),
+  cathedralWall: (ctx) => drawBricks(ctx, '#3a2a2e', { rows: 4, cols: 2, mortar: '#241a1c', studs: true }),
+  ashFloor: (ctx) => drawNoise(ctx, '#4a4644', 0.07),
+  ashWall: (ctx) => drawBricks(ctx, '#2e2a2a', { rows: 4, cols: 2, mortar: '#1c1818' }),
+  eclipseFloor: (ctx) => drawStuds(ctx, '#2a2440'),
+  eclipseWall: (ctx) => drawBricks(ctx, '#1c1830', { rows: 4, cols: 2, mortar: '#120e20', studs: true }),
+  endlessFloor: (ctx) => drawStuds(ctx, '#1a0c2a'),
+  endlessWall: (ctx) => drawBricks(ctx, '#1b0630', { rows: 4, cols: 2, mortar: '#0d0218', studs: true }),
 }
 
 const textures = new Map()
@@ -298,16 +319,17 @@ export function mat(name, extra) {
   const key = extra ? `${name}|${JSON.stringify(extra)}` : name
   if (!materials.has(key)) {
     const isColor = name.startsWith('#')
-    materials.set(
-      key,
-      new MeshStandardMaterial({
-        map: isColor ? null : getTexture(name),
-        color: isColor ? name : '#ffffff',
-        roughness: 0.78,
-        metalness: 0,
-        ...extra,
-      }),
-    )
+    const m = new MeshStandardMaterial({
+      map: isColor ? null : getTexture(name),
+      color: isColor ? name : '#ffffff',
+      roughness: 0.78,
+      metalness: 0,
+      ...extra,
+    })
+    // Shared and never changed after this: mesh merging may bake its colour
+    // into vertices so differently coloured parts share one draw (meshMerge.js).
+    m.userData.cachedMat = true
+    materials.set(key, m)
   }
   return materials.get(key)
 }
@@ -348,9 +370,54 @@ export function worldBox(w, h, d, tile = 4) {
  * ------------------------------------------------------------------------- */
 
 const faces = new Map()
-/** The classic smiley, drawn onto a head texture. */
-export function faceTexture(kind = 'smile', skin = '#f5d36b') {
-  const key = `${kind}|${skin}`
+
+/** Glowing eyes: a soft halo, a hot core. */
+function glowEyes(ctx, color, rects) {
+  ctx.save()
+  ctx.shadowColor = color
+  ctx.shadowBlur = 26
+  ctx.fillStyle = color
+  for (const [x, y, w, h] of rects) ctx.fillRect(x, y, w, h)
+  ctx.shadowBlur = 8
+  ctx.fillStyle = '#ffffff'
+  ctx.globalAlpha = 0.85
+  for (const [x, y, w, h] of rects) ctx.fillRect(x + w * 0.3, y + h * 0.3, w * 0.4, h * 0.4)
+  ctx.restore()
+}
+
+/** A snarl: dark, jagged mouth with fangs top and bottom. */
+function fangs(ctx) {
+  ctx.fillStyle = '#1b0a0a'
+  ctx.beginPath()
+  ctx.moveTo(72, 168)
+  ctx.lineTo(184, 168)
+  ctx.lineTo(172, 204)
+  ctx.lineTo(84, 204)
+  ctx.closePath()
+  ctx.fill()
+  ctx.fillStyle = '#f4efe2'
+  for (const x of [84, 106, 128, 150, 172]) {
+    ctx.beginPath()
+    ctx.moveTo(x - 9, 168)
+    ctx.lineTo(x + 9, 168)
+    ctx.lineTo(x, 186)
+    ctx.fill()
+  }
+  for (const x of [96, 128, 160]) {
+    ctx.beginPath()
+    ctx.moveTo(x - 8, 204)
+    ctx.lineTo(x + 8, 204)
+    ctx.lineTo(x, 190)
+    ctx.fill()
+  }
+}
+
+/**
+ * A head's face. `smile` for friendly folk; the enemy faces glare with glowing
+ * eyes (`glow` tints the eyes of the `glow` kind).
+ */
+export function faceTexture(kind = 'smile', skin = '#f5d36b', glow = '#c64dff') {
+  const key = `${kind}|${skin}|${kind === 'glow' ? glow : ''}`
   if (!faces.has(key)) {
     const [c, ctx] = canvas()
     ctx.fillStyle = skin
@@ -359,38 +426,45 @@ export function faceTexture(kind = 'smile', skin = '#f5d36b') {
     ctx.strokeStyle = '#1b1b1b'
     ctx.lineCap = 'round'
     if (kind === 'angry') {
-      ctx.lineWidth = 10
-      ctx.beginPath()
-      ctx.moveTo(60, 80)
-      ctx.lineTo(110, 100)
-      ctx.moveTo(196, 80)
-      ctx.lineTo(146, 100)
-      ctx.stroke()
-      ctx.fillStyle = '#ffec3b'
-      ctx.fillRect(74, 108, 30, 22)
-      ctx.fillRect(152, 108, 30, 22)
+      // Shadowed brow and cheeks, a heavy V scowl, red eyes and bared fangs.
+      ctx.fillStyle = 'rgba(0,0,0,0.28)'
+      ctx.fillRect(40, 70, 176, 70)
       ctx.fillStyle = '#1b1b1b'
-      ctx.fillRect(84, 112, 12, 16)
-      ctx.fillRect(160, 112, 12, 16)
-      ctx.lineWidth = 9
+      ctx.lineWidth = 16
       ctx.beginPath()
-      ctx.moveTo(88, 186)
-      ctx.quadraticCurveTo(128, 166, 168, 186)
+      ctx.moveTo(52, 72)
+      ctx.lineTo(116, 104)
+      ctx.moveTo(204, 72)
+      ctx.lineTo(140, 104)
       ctx.stroke()
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(98, 170, 12, 14)
-      ctx.fillRect(146, 170, 12, 14)
+      glowEyes(ctx, '#ff2a1a', [
+        [70, 108, 38, 18],
+        [148, 108, 38, 18],
+      ])
+      fangs(ctx)
     } else if (kind === 'skull') {
-      ctx.fillRect(66, 88, 42, 46)
-      ctx.fillRect(148, 88, 42, 46)
-      ctx.fillRect(118, 146, 20, 24)
-      for (let i = 0; i < 5; i += 1) ctx.fillRect(84 + i * 20, 190, 10, 22)
+      ctx.fillRect(62, 84, 48, 52)
+      ctx.fillRect(146, 84, 48, 52)
+      glowEyes(ctx, '#ff3b1f', [
+        [78, 102, 16, 16],
+        [162, 102, 16, 16],
+      ])
+      ctx.fillStyle = '#1b1b1b'
+      ctx.beginPath()
+      ctx.moveTo(128, 142)
+      ctx.lineTo(116, 170)
+      ctx.lineTo(140, 170)
+      ctx.fill()
+      for (let i = 0; i < 6; i += 1) ctx.fillRect(74 + i * 20, 188, 10, 26)
     } else if (kind === 'glow') {
-      ctx.fillStyle = '#c64dff'
-      ctx.shadowColor = '#e7a3ff'
-      ctx.shadowBlur = 20
-      ctx.fillRect(66, 104, 50, 16)
-      ctx.fillRect(140, 104, 50, 16)
+      ctx.fillStyle = 'rgba(0,0,0,0.35)'
+      ctx.fillRect(48, 88, 160, 52)
+      glowEyes(ctx, glow, [
+        [62, 102, 54, 18],
+        [140, 102, 54, 18],
+      ])
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'
+      ctx.fillRect(92, 176, 72, 12)
     } else {
       ctx.beginPath()
       ctx.ellipse(96, 104, 11, 20, 0, 0, Math.PI * 2)

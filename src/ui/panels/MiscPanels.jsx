@@ -21,6 +21,7 @@ import { BackpackPanel, IndexPanel, SellPanel } from './InventoryPanels'
 import { EnchantPanel, ExtraSkillPanel, RacesPanel } from './RollPanels'
 import { QuestsPanel, RebirthPanel, ShopPanel, UpgradePanel } from './ShopPanels'
 import { ForgePanel } from './ForgePanel'
+import { GuidePanel } from './GuidePanel'
 
 function Slider({ label, value, onChange }) {
   return (
@@ -236,6 +237,7 @@ const PANELS = {
   teleport: TeleportPanel,
   gift: GiftPanel,
   skills: SkillsPanel,
+  guide: GuidePanel,
 }
 
 export function PanelHost() {

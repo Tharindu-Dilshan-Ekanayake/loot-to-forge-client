@@ -30,6 +30,8 @@ export const local = {
   cameraFacing: null,
   /** A/D (or ←/→) held: +1 turns the camera left, -1 right. Set by Player. */
   turn: 0,
+  /** The touch joystick: x right, y forward, each -1..1 (0 when not held). */
+  stick: { x: 0, y: 0 },
   /** Seconds-since-epoch of the last swing, drives the attack pose. */
   swingAt: 0,
   /** { key, at } of the last skill cast, drives skill poses and VFX. */

@@ -80,6 +80,9 @@ export function LabelProjector() {
   )
 
   useFrame(() => {
+    // The follow camera moved it this frame, but three only refreshes the view
+    // matrix at render time: without this, labels are placed with last frame's.
+    camera.updateMatrixWorld()
     for (const a of anchors.values()) {
       const p = a.getPos()
       let dist = -1

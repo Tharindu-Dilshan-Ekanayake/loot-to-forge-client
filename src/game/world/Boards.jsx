@@ -1,6 +1,6 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { AdditiveBlending, CanvasTexture, Color, DoubleSide, ShaderMaterial, SRGBColorSpace } from 'three'
+import { AdditiveBlending, CanvasTexture, Color, DoubleSide, MeshBasicMaterial, ShaderMaterial, SRGBColorSpace } from 'three'
 
 import { getRoom } from '../../net/network'
 import { serverNow, useGame } from '../../net/store'
@@ -272,12 +272,22 @@ export function Leaderboard({ kind, position, rotation = [0, 0, 0] }) {
   )
 }
 
+/** Shared by every spot cone (additive, so order-free): the world batches them into one draw. */
+const spotMaterials = new Map()
+function spotMaterial(color) {
+  if (!spotMaterials.has(color)) {
+    const m = new MeshBasicMaterial({ color, transparent: true, opacity: 0.08, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
+    m.userData.cachedMat = true
+    spotMaterials.set(color, m)
+  }
+  return spotMaterials.get(color)
+}
+
 /** A soft cone of light from a truss lamp down onto the stage. */
 function SpotCone({ position, height, color = '#bfefff' }) {
   return (
-    <mesh position={[position[0], position[1] - height / 2, position[2]]}>
+    <mesh position={[position[0], position[1] - height / 2, position[2]]} material={spotMaterial(color)}>
       <cylinderGeometry args={[0.35, 2.4, height, 20, 1, true]} />
-      <meshBasicMaterial color={color} transparent opacity={0.08} blending={AdditiveBlending} depthWrite={false} side={DoubleSide} />
     </mesh>
   )
 }

@@ -1,8 +1,8 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useRef } from 'react'
-import { Matrix4, Mesh } from 'three'
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { Matrix4 } from 'three'
 
+import { buildMerged, mergeableMesh, mirrored, planMerge } from '../meshMerge'
 import { pauseMatrices } from '../stageWindow'
 
 /**
@@ -28,25 +28,32 @@ const STABLE_FRAMES = 30
 /** After the first pass, look for newly mounted blocks this often (seconds). */
 const RESCAN_S = 6
 /** The watchdog checks this many merged blocks per frame, round-robin. */
-const WATCH_PER_FRAME = 30
-/** Batches smaller than this aren't worth merging. */
-const MIN_BATCH = 3
+const WATCH_PER_FRAME = 12
+/** Two draws into one is already worth it. */
+const MIN_BATCH = 2
 
 const _inv = new Matrix4()
-const _local = new Matrix4()
 const _world = new Matrix4()
+/**
+ * The frame the last merge ran in: every stage settles at the same moment, and
+ * merging them all in one frame would stall it. One batch set per frame.
+ */
+let mergeFrame = -1
 
 /**
  * Plain, opaque, single-material meshes: blocks and the other static props
- * (posts, lamps, rocks). Transparent ones keep their own draw order, and
- * anything skinned, instanced, morphing or marked `userData.noBatch` is left be.
+ * (posts, lamps, rocks, window panes). Transparent ones keep their own draw
+ * order, and anything skinned, instanced, morphing, mirrored or marked
+ * `userData.noBatch` is left be.
  */
 function mergeable(o) {
-  if (!o.isMesh || o.isSkinnedMesh || o.isInstancedMesh || o.name === 'static-batch' || o.userData.noBatch) return false
-  const m = o.material
-  if (!m || Array.isArray(m) || m.transparent || !m.isMeshStandardMaterial) return false
-  const g = o.geometry
-  return Boolean(g?.attributes.position && g.attributes.normal && !g.morphAttributes.position)
+  return o.name !== 'static-batch' && mergeableMesh(o)
+}
+
+/** Is `obj` drawn at all, i.e. is it and every ancestor visible? */
+function shownInWorld(obj) {
+  for (let p = obj; p; p = p.parent) if (!p.visible) return false
+  return true
 }
 
 /** Is every ancestor between `obj` and `root` visible? (Ignores obj itself.) */
@@ -129,30 +136,13 @@ export default function StaticBatch({ children }) {
   function merge(r, s, meshes) {
     r.updateWorldMatrix(true, false)
     _inv.copy(r.matrixWorld).invert()
-    // One batch per material (and shadow settings).
-    const groups = new Map()
-    for (const m of meshes) {
-      const key = `${m.material.uuid}|${m.castShadow}|${m.receiveShadow}|${m.geometry.index ? 1 : 0}|${m.geometry.attributes.uv ? 1 : 0}`
-      if (!groups.has(key)) groups.set(key, [])
-      groups.get(key).push(m)
-    }
-    for (const list of groups.values()) {
+    // One batch per kind of material (colours of the shared `mat()` ones are
+    // baked into the vertices) and shadow settings.
+    for (const plan of planMerge(meshes.filter((m) => !mirrored(m)))) {
+      const list = plan.meshes
       if (list.length < MIN_BATCH) continue
-      const geos = []
-      for (const m of list) {
-        const g = m.geometry.clone()
-        g.clearGroups()
-        for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name)
-        g.applyMatrix4(_local.multiplyMatrices(_inv, m.matrixWorld))
-        geos.push(g)
-      }
-      const geometry = mergeGeometries(geos, false)
-      for (const g of geos) g.dispose()
-      if (!geometry) continue
-      geometry.computeBoundingSphere()
-      const mesh = new Mesh(geometry, list[0].material)
-      mesh.castShadow = list[0].castShadow
-      mesh.receiveShadow = list[0].receiveShadow
+      const mesh = buildMerged(plan, _inv)
+      if (!mesh) continue
       mesh.matrixAutoUpdate = false
       mesh.name = 'static-batch'
       r.add(mesh)
@@ -186,7 +176,8 @@ export default function StaticBatch({ children }) {
       s.nextScan = clock.elapsedTime + RESCAN_S
     }
     // Second look: merge the ones that are still where they were, and visible.
-    if (s.pending && s.frame >= s.pendingAt + STABLE_FRAMES) {
+    if (s.pending && s.frame >= s.pendingAt + STABLE_FRAMES && mergeFrame !== clock.elapsedTime) {
+      mergeFrame = clock.elapsedTime
       const still = []
       for (const [m, mat0] of s.pending) {
         if (!m.parent || !under(m, r) || !m.visible || !chainVisible(m, r)) continue
@@ -197,9 +188,10 @@ export default function StaticBatch({ children }) {
       if (still.length >= MIN_BATCH) merge(r, s, still)
     }
 
-    // Watchdog: a merged block that changed splits its batch back apart.
+    // Watchdog: a merged block that changed splits its batch back apart. Not
+    // while the whole lot is out of sight (a far stage): nothing moves there.
     const total = s.members.length
-    if (!total) return
+    if (!total || !shownInWorld(r)) return
     const budget = Math.min(WATCH_PER_FRAME, total)
     for (let k = 0; k < budget; k += 1) {
       s.watch = (s.watch + 1) % total

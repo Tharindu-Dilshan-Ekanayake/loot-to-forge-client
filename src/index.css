@@ -788,15 +788,42 @@ button {
   display: none !important;
 }
 
+/*
+ * One UI scale for the HUD and the panels, stepping down with the screen: the
+ * layout is built for a desktop, and phones and small tablets get it shrunk to
+ * fit. Later (smaller) rules win.
+ */
+:root {
+  --ui-zoom: 1;
+}
 @media (max-width: 900px) {
-  .hud-scale {
-    zoom: 0.72;
+  :root {
+    --ui-zoom: 0.72;
   }
 }
 @media (max-height: 760px) {
-  .hud-scale {
-    zoom: 0.8;
+  :root {
+    --ui-zoom: 0.8;
   }
+}
+@media (max-height: 600px) {
+  :root {
+    --ui-zoom: 0.64;
+  }
+}
+@media (max-height: 460px) {
+  :root {
+    --ui-zoom: 0.52;
+  }
+}
+@media (max-width: 600px) {
+  :root {
+    --ui-zoom: 0.48;
+  }
+}
+.hud-scale,
+.panel-box {
+  zoom: var(--ui-zoom);
 }
 
 /* ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import { useGame } from '../../net/store'
 import { enemyStats, formatNum } from '../../shared/gameData'
 import { fx, local } from '../bus'
 import { addAnchor, makeHealthPlate } from '../labels'
+import { createTrack, serverNowS, serverPlayTime } from '../serverClock'
 import { pauseMatrices, stageShown } from '../stageWindow'
 import { glowTexture, mat } from '../textures'
 import { Block, BlockyCharacter, Glow } from '../world/props'
@@ -95,6 +96,49 @@ const LOOKS = {
   cosmicslime: { skin: '#e8e0ff', shirt: '#8a6aff', pants: '#3a2a8a', face: 'glow', hat: 'hood', hatColor: '#8a6aff', glow: '#ffe07a', weapon: 'starpiercer' },
   celestialseraph: { skin: '#fff3d0', shirt: '#ffffff', pants: '#ffe07a', face: 'glow', hat: 'crown', hatColor: '#ffe07a', bow: '#ffe07a', glow: '#ffe07a' },
   starsovereign: { skin: '#fff3d0', shirt: '#ffe07a', pants: '#c3cbff', face: 'glow', hat: 'crown', hatColor: '#ffffff', weapon: 'celestial_verdict', glow: '#ffe07a', fur: true },
+  // Stage 21 — Bloodmoon Marsh
+  bogfiend: { skin: '#4a6a3a', shirt: '#2a3a1e', pants: '#1a2410', face: 'glow', glow: '#9dff5a', hat: 'demonhorns', hatColor: '#1a2410', weapon: 'venomfang_axe', fur: true },
+  marshwitch: { skin: '#6a8a5a', shirt: '#2a1a2a', pants: '#1a101a', face: 'glow', glow: '#9dff5a', hat: 'wizard', hatColor: '#1a2410', weapon: 'venom_kiss' },
+  swampbrute: { skin: '#3a4a2a', shirt: '#2a3a1e', pants: '#1a2410', face: 'glow', glow: '#9dff5a', rock: '#4a5a36' },
+  // Stage 22 — Bone Wastes
+  bonereaver: { skin: '#e8e4d4', shirt: '#3a3030', pants: '#2a2020', face: 'skull', hat: 'demonhorns', hatColor: '#e8e4d4', weapon: 'crimson_tyrant', glow: '#ff3b3b', fur: true },
+  deathcaller: { skin: '#e8e4d4', shirt: '#1a1418', pants: '#0e0a0c', face: 'skull', hat: 'hood', hatColor: '#1a1418', glow: '#ff3b3b', weapon: 'shadow_talon' },
+  bonecolossus: { skin: '#d8d0bc', shirt: '#b8ae96', pants: '#8e846c', face: 'glow', glow: '#ff3b3b', rock: '#f4efe2' },
+  // Stage 23 — Plague Catacombs
+  rotknight: { skin: '#6a7a4a', shirt: '#3a4232', pants: '#262c20', face: 'glow', glow: '#a8ff3a', hat: 'spikes', hatColor: '#4a5040', weapon: 'dusk_ripper', fur: true },
+  plaguedoctor: { skin: '#e8e0c8', shirt: '#1a1a1a', pants: '#101010', face: 'glow', glow: '#a8ff3a', hat: 'plague', hatColor: '#1a1a1a', weapon: 'venom_kiss' },
+  ghoulbrute: { skin: '#7a8a6a', shirt: '#3a2a2a', pants: '#2a1a1a', face: 'angry', hat: 'spikes', hatColor: '#3a3030', weapon: 'abyss_devourer', fur: true, ears: true },
+  // Stage 24 — Iron Fortress
+  ironlegion: { skin: '#9aa0a8', shirt: '#3d434b', pants: '#2e3238', face: 'glow', glow: '#ff9a1f', hat: 'helmet', hatColor: '#4a4f5c', weapon: 'iron_blade', fur: true },
+  siegecaller: { skin: '#9aa0a8', shirt: '#4a4f5c', pants: '#2e3238', face: 'glow', glow: '#ff9a1f', hat: 'helmet', hatColor: '#3d434b', bow: '#2e3238' },
+  warforged: { skin: '#6b7280', shirt: '#4a4f5c', pants: '#33373f', face: 'glow', glow: '#ff9a1f', rock: '#8a92a0' },
+  ironwarlord: { skin: '#4a4f5c', shirt: '#2a2d33', pants: '#1a1c20', face: 'glow', glow: '#ff5a1f', hat: 'spikes', hatColor: '#ff9a1f', weapon: 'hellfire_reaper', fur: true },
+  // Stage 25 — Abyssal Trench
+  deepone: { skin: '#2f6a7a', shirt: '#14283a', pants: '#0a1622', face: 'glow', glow: '#3ef6ff', hat: 'demonhorns', hatColor: '#0a1622', weapon: 'tsunami_edge', fur: true },
+  abyssalpriest: { skin: '#3a7a8a', shirt: '#0a1622', pants: '#06101a', face: 'glow', glow: '#3ef6ff', hat: 'wizard', hatColor: '#0a1622', weapon: 'tidal_stiletto' },
+  trenchgolem: { skin: '#1f3a4a', shirt: '#14283a', pants: '#0a1622', face: 'glow', glow: '#3ef6ff', rock: '#2f5a6a' },
+  // Stage 26 — Corrupted Grove
+  blightwalker: { skin: '#5a3a5a', shirt: '#2e1a2e', pants: '#1a0e1a', face: 'glow', glow: '#e05aff', hat: 'demonhorns', hatColor: '#2e1a2e', weapon: 'dusk_ripper', fur: true },
+  thornwitch: { skin: '#7a5a7a', shirt: '#3a1a3a', pants: '#1a0e1a', face: 'glow', glow: '#e05aff', hat: 'wizard', hatColor: '#2e1a2e', weapon: 'venom_kiss' },
+  rotgolem: { skin: '#4a2a4a', shirt: '#3a1a3a', pants: '#2e1a2e', face: 'glow', glow: '#e05aff', rock: '#5a3a5a' },
+  // Stage 27 — Blood Cathedral
+  bloodknight: { skin: '#8a1a24', shirt: '#3a0a10', pants: '#1a0508', face: 'glow', glow: '#ff2d3d', hat: 'spikes', hatColor: '#1a0508', weapon: 'crimson_tyrant', fur: true },
+  hemomancer: { skin: '#c8a0a0', shirt: '#5a0a14', pants: '#2a0508', face: 'glow', glow: '#ff2d3d', hat: 'hood', hatColor: '#5a0a14', weapon: 'bloodmoon_edge' },
+  gargoyle: { skin: '#5a5a6e', shirt: '#3c3c4e', pants: '#2a2a3a', face: 'glow', glow: '#ff2d3d', rock: '#6a6a7e' },
+  bloodcardinal: { skin: '#e8d0c8', shirt: '#8a0a1a', pants: '#3a0508', face: 'glow', glow: '#ff2d3d', hat: 'crown', hatColor: '#ffd23b', weapon: 'crimson_shogun', fur: true },
+  // Stage 28 — Ashen Wastes
+  ashreaver: { skin: '#3a3634', shirt: '#1c1818', pants: '#100c0c', face: 'glow', glow: '#ff6a1f', hat: 'demonhorns', hatColor: '#1c1818', weapon: 'hellfire_reaper', fur: true },
+  cinderseer: { skin: '#5a4a44', shirt: '#2e2a2a', pants: '#1c1818', face: 'glow', glow: '#ff6a1f', hat: 'hood', hatColor: '#2e2a2a', weapon: 'sunfang' },
+  obsidiangolem: { skin: '#1c1818', shirt: '#100c0c', pants: '#0a0808', face: 'glow', glow: '#ff6a1f', rock: '#2a2424' },
+  // Stage 29 — Eclipse Citadel
+  eclipseblade: { skin: '#2a2440', shirt: '#1c1830', pants: '#120e20', face: 'glow', glow: '#ffb000', hat: 'bandana', hatColor: '#ffb000', weapon: 'golden_dragon', fur: true },
+  voidoracle: { skin: '#3a2a5a', shirt: '#1c1830', pants: '#120e20', face: 'glow', glow: '#ffb000', hat: 'wizard', hatColor: '#ffb000', weapon: 'starpiercer' },
+  eclipsetitan: { skin: '#2a2440', shirt: '#1c1830', pants: '#120e20', face: 'glow', glow: '#ffb000', rock: '#3a3450' },
+  // Stage 30 — The Endless Abyss
+  doomknight: { skin: '#1b0630', shirt: '#12031f', pants: '#0d0218', face: 'glow', glow: '#ff2bd6', hat: 'spikes', hatColor: '#ff2bd6', weapon: 'void_emperor', fur: true },
+  chaosmage: { skin: '#3a1a5a', shirt: '#12031f', pants: '#0d0218', face: 'glow', glow: '#ff2bd6', hat: 'wizard', hatColor: '#1b0630', weapon: 'voidwhisper' },
+  abyssbeast: { skin: '#1b0630', shirt: '#12031f', pants: '#0d0218', face: 'glow', glow: '#ff2bd6', rock: '#2a0a40' },
+  abyssemperor: { skin: '#12031f', shirt: '#1b0630', pants: '#0d0218', face: 'glow', glow: '#ff2bd6', hat: 'demonhorns', hatColor: '#ff2bd6', weapon: 'abyssal_sovereign', fur: true },
 }
 
 /** Where the health plate sits, per body at scale 1. */
@@ -116,6 +160,7 @@ function hash01(str) {
 }
 
 const _tintColor = new Color()
+const _at = { x: 0, z: 0 }
 /** Nudges a hex color's hue/lightness a little; small shifts read as "a different person". */
 function tint(hex, hue, light) {
   _tintColor.set(hex)
@@ -137,8 +182,9 @@ function useVariant(kind, id, look) {
     const next = { ...look }
     if (look.skin) next.skin = tint(look.skin, hue, light)
     if (look.fur) next.fur = tint(look.fur, hue, light * 0.6)
-    if (look.shirt) next.shirt = tint(look.shirt, -hue, -light * 0.5)
-    if (look.pants) next.pants = tint(look.pants, hue * 0.5, light * 0.4)
+    // Clothes a shade darker than their bright base: grimmer, meaner.
+    if (look.shirt) next.shirt = tint(look.shirt, -hue, -light * 0.5 - 0.07)
+    if (look.pants) next.pants = tint(look.pants, hue * 0.5, light * 0.4 - 0.07)
     const roll = (h * 13) % 1
     if (look.weapon && !look.bow && roll < 0.34) {
       next.weapon = undefined
@@ -167,9 +213,49 @@ function Bow({ color }) {
   )
 }
 
-function Humanoid({ look, pose, scale, golem }) {
+/** Eye colour for each face: the glow shines out through the head in 3D too. */
+const EYE = { angry: '#ff2a1a', skull: '#ff3b1f' }
+const spikeMat = mat('#c9ced6', { metalness: 0.65, roughness: 0.3 })
+
+/**
+ * War gear every enemy wears so it reads as a threat at a glance: glowing eyes,
+ * spiked pauldrons, a tattered cape and a skull-buckled belt. Elites wear gold,
+ * bosses black iron. All rigid on the torso, so it draws merged with it.
+ */
+function Menace({ look, rank, golem }) {
+  const eye = look.face === 'glow' ? look.glow || '#c64dff' : EYE[look.face]
+  const plate = rank === 'boss' ? '#1b0a0a' : rank === 'elite' ? '#c9a13b' : '#2a2d33'
+  const cape = tint(look.shirt || '#2a2a33', 0, -0.14)
+  return (
+    <>
+      {eye &&
+        [-0.18, 0.18].map((x) => (
+          <Block key={x} size={[0.2, 0.09, 0.05]} position={[x, 1.65, 0.625]} m={eyeMat(eye)} cast={false} />
+        ))}
+      {!golem &&
+        [-1, 1].map((s) => (
+          <group key={s} position={[s * 1.48, 0.98, 0]}>
+            <Block size={[1.25, 0.42, 1.34]} m={mat(plate, { metalness: 0.45, roughness: 0.45 })} />
+            <mesh position={[s * 0.18, 0.5, 0]} rotation={[0, 0, -s * 0.35]} material={spikeMat} castShadow>
+              <coneGeometry args={[0.17, 0.75, 5]} />
+            </mesh>
+          </group>
+        ))}
+      {/* A tattered cape down the back, ragged at the hem. */}
+      <Block size={[1.9, 2.3, 0.1]} position={[0, -0.2, -0.6]} rotation={[0.12, 0, 0]} m={cape} cast={false} />
+      <Block size={[0.55, 0.5, 0.1]} position={[-0.62, -1.55, -0.74]} rotation={[0.12, 0, 0]} m={cape} cast={false} />
+      <Block size={[0.5, 0.32, 0.1]} position={[0.5, -1.48, -0.73]} rotation={[0.12, 0, 0]} m={cape} cast={false} />
+      {/* Belt with a skull buckle. */}
+      <Block size={[2.08, 0.3, 1.08]} position={[0, -0.82, 0]} m="#1b1414" cast={false} />
+      <Block size={[0.42, 0.4, 0.1]} position={[0, -0.82, 0.56]} m="#e8e4d4" cast={false} />
+    </>
+  )
+}
+
+function Humanoid({ look, pose, scale, golem, rank }) {
   const extra = (
     <>
+      <Menace look={look} rank={rank} golem={golem} />
       {look.fur && <Block size={[2.6, 0.7, 1.6]} position={[0, 1.05, 0]} m={golem ? look.rock || ROCK : '#f2ede0'} />}
       {look.ears && (
         <>
@@ -213,8 +299,8 @@ function Humanoid({ look, pose, scale, golem }) {
   )
 }
 
-function Body({ bodyType, look, pose, scale }) {
-  return <Humanoid look={look} pose={pose} scale={scale} golem={bodyType === 'golem'} />
+function Body({ bodyType, look, pose, scale, rank }) {
+  return <Humanoid look={look} pose={pose} scale={scale} golem={bodyType === 'golem'} rank={rank} />
 }
 
 export function Enemy({ id }) {
@@ -239,6 +325,9 @@ export function Enemy({ id }) {
     kb: 0,
     crit: false,
   })
+
+  /** Recent server positions, for smooth playback. */
+  const track = useMemo(() => createTrack(), [])
 
   const e0 = getRoom()?.state.enemies.get(id)
   const kind = e0?.kind || 'goblin'
@@ -317,6 +406,7 @@ export function Enemy({ id }) {
       s.bz = e.z
       s.kb = 0
       s.init = true
+      track.reset(e.x, e.z, serverNowS())
     }
 
     // Death: blown back off its feet away from the killing blow, then sinks away.
@@ -348,6 +438,7 @@ export function Enemy({ id }) {
     if (!s.alive) {
       s.alive = true
       g.position.set(e.x, 0, e.z)
+      track.reset(e.x, e.z, serverNowS())
       s.bx = e.x
       s.bz = e.z
       s.kb = 0
@@ -359,9 +450,18 @@ export function Enemy({ id }) {
       s.spawnAt = now
     }
 
-    // Ease toward the server position, then add the knockback shove on top.
-    s.bx += (e.x - s.bx) * Math.min(1, delta * 10)
-    s.bz += (e.z - s.bz) * Math.min(1, delta * 10)
+    // Where the server had it a moment ago, played back on the server's clock so
+    // it moves at the even pace it really did; then the knockback shove on top.
+    const playT = serverPlayTime(now, delta)
+    track.push(serverNowS(), e.x, e.z)
+    if (playT !== null && track.at(playT, _at, { extrapolate: e.moving ? 0.1 : 0 })) {
+      s.bx = _at.x
+      s.bz = _at.z
+    } else {
+      // An old server without a clock: ease toward its latest position.
+      s.bx += (e.x - s.bx) * Math.min(1, delta * 10)
+      s.bz += (e.z - s.bz) * Math.min(1, delta * 10)
+    }
     s.kb *= Math.pow(0.004, delta)
     g.position.x = s.bx + s.kbX * s.kb
     g.position.z = s.bz + s.kbZ * s.kb
@@ -404,7 +504,7 @@ export function Enemy({ id }) {
   return (
     <group ref={group}>
       <group ref={body}>
-        <Body bodyType={bodyType} look={look} pose={pose} scale={type.scale} />
+        <Body bodyType={bodyType} look={look} pose={pose} scale={type.scale} rank={type.boss ? 'boss' : elite ? 'elite' : null} />
         {look.glow && bodyType === 'humanoid' && <Glow position={[0, 3.2 * BASE * type.scale, 0]} color={look.glow} size={4 * type.scale} opacity={0.35} />}
       </group>
       {/* Blob shadow keeps enemies grounded even when far from the shadow camera. */}
