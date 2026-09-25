@@ -1,4 +1,4 @@
-import { NearestFilter, Quaternion, Vector3 } from 'three'
+import { Box3, NearestFilter, Quaternion, SRGBColorSpace, Vector3 } from 'three'
 
 import { BACK_BONE, HAT_BONE, NECK_OFFSET_BONE, PART_SLOTS } from '../bloxity/avatarAssets'
 
@@ -105,6 +105,43 @@ export function collectRig(root) {
       entry.axisX = new Vector3(1, 0, 0).applyQuaternion(relInv).normalize()
       /** Local axis to rotate about for lateral sway. */
       entry.axisZ = new Vector3(0, 0, 1).applyQuaternion(relInv).normalize()
+      /** Maps a character-space orientation into this bone's local frame. */
+      entry.relInv = relInv
+    }
+
+    // Where the right hand is, in the forearm bone's local space, so a held weapon
+    // can be parented to the bone and follow every swing.
+    const handBone = rig.bones.ArmR2?.bone || rig.bones.ArmR1?.bone
+    const armMesh = rig.partMeshes.arm_R
+    if (handBone && armMesh) {
+      const box = new Box3().setFromObject(armMesh)
+      const hand = new Vector3((box.min.x + box.max.x) / 2, box.min.y, (box.min.z + box.max.z) / 2)
+      // Grip a little above the very bottom of the fist.
+      hand.y += (box.max.y - box.min.y) * 0.08
+      rig.hand = {
+        bone: handBone,
+        offset: handBone.worldToLocal(hand),
+        relInv: rig.bones[handBone.name].relInv,
+      }
+    }
+
+    // The middle of the torso's back face, in the spine bone's space: where a
+    // backpack hangs. `depth` lets the bag sit flush whatever the body shape.
+    const backBone = rig.bones[BACK_BONE]?.bone
+    const torsoMesh = rig.partMeshes.torso
+    if (backBone && torsoMesh) {
+      const box = new Box3().setFromObject(torsoMesh)
+      const back = new Vector3(
+        (box.min.x + box.max.x) / 2,
+        box.min.y + (box.max.y - box.min.y) * 0.55,
+        box.min.z,
+      )
+      rig.back = {
+        bone: backBone,
+        offset: backBone.worldToLocal(back),
+        relInv: rig.bones[BACK_BONE].relInv,
+        width: box.max.x - box.min.x,
+      }
     }
 
     rig.hatBone = skeleton.bones.find((b) => b.name === HAT_BONE) || null
@@ -124,6 +161,9 @@ export function collectRig(root) {
 export function configureAvatarTexture(texture) {
   if (!texture) return texture
   texture.flipY = false
+  // Skins are sRGB images. Left linear, three.js brightens every colour and the
+  // avatars come out pale and washed out.
+  texture.colorSpace = SRGBColorSpace
   texture.magFilter = NearestFilter
   texture.minFilter = NearestFilter
   texture.needsUpdate = true
@@ -140,6 +180,9 @@ export function applySkin(rig, texture) {
   for (const mesh of rig.skinnedMeshes) {
     if (!mesh.material) continue
     mesh.material.map = texture
+    // Matte, like blocky avatars should be: no shiny highlights bleaching the colours.
+    if ('roughness' in mesh.material) mesh.material.roughness = 1
+    if ('metalness' in mesh.material) mesh.material.metalness = 0
     mesh.material.needsUpdate = true
   }
 }
@@ -319,6 +362,9 @@ function rotateBone(rig, name, which, angle) {
   entry.bone.quaternion.multiply(_animQ.setFromAxisAngle(axis, angle))
 }
 
+/** How far each leg angles out to the side when standing still (radians). */
+const STANCE_SPLAY = 0.17
+
 /** Swing a limb forward/back - the plane a walk cycle actually moves in. */
 const swing = (rig, name, angle) => rotateBone(rig, name, 'axisX', angle)
 /** Sway a limb out to the side. */
@@ -340,6 +386,27 @@ export function animateRig(rig, motion) {
 
   rig.root.position.y = rig.rootRestY
 
+  // Q leap: blade hauled up overhead with the body arched back, legs tucked, then
+  // the whole body snaps forward into the chop as it comes down.
+  if (motion.leap > 0) {
+    const t = motion.leap
+    const raise = Math.min(1, t / 0.3)
+    const chop = t > 0.72 ? (t - 0.72) / 0.28 : 0
+    swing(rig, 'ArmR1', -3.0 * raise + 2.4 * chop)
+    swing(rig, 'ArmL1', -2.7 * raise + 2.0 * chop)
+    swing(rig, 'ArmR2', -0.45 * (1 - chop))
+    swing(rig, 'ArmL2', -0.35 * (1 - chop))
+    swing(rig, 'Spine1', 0.22 * raise * (1 - chop) - 0.45 * chop)
+    swing(rig, 'LegL1', -1.0)
+    swing(rig, 'LegL2', 1.3)
+    swing(rig, 'LegR1', 0.25)
+    swing(rig, 'LegR2', 0.9)
+    return
+  }
+
+  // Upper-body overlays run on top of the locomotion pose below.
+  poseWeaponArm(rig, motion)
+
   // --- Airborne: tuck the legs, throw the arms up ---------------------------
   if (!grounded) {
     swing(rig, 'LegL1', -0.55)
@@ -352,9 +419,29 @@ export function animateRig(rig, motion) {
     return
   }
 
+  // --- Standing still, armed: a ready stance --------------------------------
+  // Upright with the feet planted apart, one to each side; the free fist up as a
+  // guard and the blade held out in front, breathing as it waits.
+  if (ratio < 0.04 && motion.armed && !(motion.attack > 0 && motion.attack < 1)) {
+    const idle = Math.sin(time * 2.2)
+    sway(rig, 'LegL1', -STANCE_SPLAY)
+    sway(rig, 'LegR1', STANCE_SPLAY)
+    swing(rig, 'Spine1', -0.04 + idle * 0.02)
+    if (!motion.skill || motion.skillT >= 1) {
+      swing(rig, 'ArmL1', -0.95 + idle * 0.05)
+      sway(rig, 'ArmL1', -0.3)
+      swing(rig, 'ArmL2', -1.05)
+      swing(rig, 'ArmR1', idle * 0.05)
+    }
+    rig.root.position.y = rig.rootRestY - 0.03 + idle * 0.02
+    return
+  }
+
   // --- Standing still: a slow breathing sway --------------------------------
   if (ratio < 0.04) {
     const idle = Math.sin(time * 1.6)
+    sway(rig, 'LegL1', -STANCE_SPLAY)
+    sway(rig, 'LegR1', STANCE_SPLAY)
     sway(rig, 'ArmL1', -0.07 - idle * 0.03)
     sway(rig, 'ArmR1', 0.07 + idle * 0.03)
     swing(rig, 'Spine1', idle * 0.02)
@@ -364,24 +451,111 @@ export function animateRig(rig, motion) {
 
   // --- Walk / run cycle -----------------------------------------------------
   // Step frequency rises with speed so a sprint doesn't look like a moonwalk.
-  const phase = time * (5 + ratio * 5)
+  // Kept upright and even: a clean stride with the legs in full view, rather than
+  // a crouched, leaning scurry.
+  const phase = time * (6 + ratio * 4)
   const cycle = Math.sin(phase)
-  const legAmp = 0.85 * ratio
-  const armAmp = 0.7 * ratio
+  const legAmp = 0.7 * ratio
+  const armAmp = 0.6 * ratio
 
-  // Legs swing in opposition; knees fold on the backswing only.
+  // Legs swing in opposition; the knee folds a little as each foot comes through.
   swing(rig, 'LegL1', cycle * legAmp)
   swing(rig, 'LegR1', -cycle * legAmp)
-  swing(rig, 'LegL2', Math.max(0, -cycle) * 1.1 * ratio)
-  swing(rig, 'LegR2', Math.max(0, cycle) * 1.1 * ratio)
+  swing(rig, 'LegL2', Math.max(0, -cycle) * 0.55 * ratio)
+  swing(rig, 'LegR2', Math.max(0, cycle) * 0.55 * ratio)
 
-  // Arms counter-swing against the legs.
+  // Arms counter-swing against the legs. The sword arm swings less while armed.
+  const armed = motion.armed ? 0.25 : 1
   swing(rig, 'ArmL1', -cycle * armAmp)
-  swing(rig, 'ArmR1', cycle * armAmp)
+  swing(rig, 'ArmR1', cycle * armAmp * armed)
   swing(rig, 'ArmL2', Math.max(0, cycle) * 0.5 * ratio)
-  swing(rig, 'ArmR2', Math.max(0, -cycle) * 0.5 * ratio)
+  swing(rig, 'ArmR2', Math.max(0, -cycle) * 0.5 * ratio * armed)
 
-  // Lean into the run, and bob once per step (twice per full cycle).
-  swing(rig, 'Spine1', -0.14 * ratio)
-  rig.root.position.y = rig.rootRestY + Math.abs(Math.cos(phase)) * 0.18 * ratio
+  // Barely any lean, and a light bob once per step (twice per full cycle).
+  swing(rig, 'Spine1', -0.04 * ratio)
+  rig.root.position.y = rig.rootRestY + Math.abs(Math.cos(phase)) * 0.07 * ratio
 }
+
+/**
+ * Sword-arm pose: a relaxed ready stance while armed, a wind-up-and-chop while
+ * `motion.attack` runs 0 → 1, and per-skill poses while `motion.skill` is set.
+ */
+function poseWeaponArm(rig, motion) {
+  const { attack = 0, skill = null, skillT = 0, armed = false } = motion
+
+  if (skill === 'dash' && skillT < 1) {
+    // Blade thrust forward, body low.
+    swing(rig, 'ArmR1', -1.55)
+    swing(rig, 'ArmR2', -0.2)
+    swing(rig, 'ArmL1', 0.6)
+    swing(rig, 'Spine1', -0.35)
+    return
+  }
+  if (skill === 'earthsplitter' && skillT < 1) {
+    // Both arms overhead, then slammed down at the midpoint.
+    const up = skillT < 0.5 ? skillT / 0.5 : 1 - (skillT - 0.5) / 0.5
+    swing(rig, 'ArmR1', -2.8 * up - 0.4 * (1 - up))
+    swing(rig, 'ArmL1', -2.8 * up)
+    swing(rig, 'Spine1', 0.25 * (1 - up))
+    return
+  }
+  if (skill === 'whirlwind' && skillT < 1) {
+    sway(rig, 'ArmR1', 1.4)
+    sway(rig, 'ArmL1', -1.2)
+    return
+  }
+
+  if (attack > 0 && attack < 1) {
+    // Every move winds up over 0–0.35 and strikes through 0.35–1.
+    const windup = Math.min(attack / 0.35, 1)
+    const strike = easeOut(Math.max(0, (attack - 0.35) / 0.65))
+    switch (motion.combo || 0) {
+      case 1:
+        // Sweep: arm out to the side, then across the body.
+        swing(rig, 'ArmR1', -1.35)
+        sway(rig, 'ArmR1', 1.7 * windup - 2.6 * strike)
+        swing(rig, 'ArmR2', -0.25)
+        sway(rig, 'Spine1', 0.3 * windup - 0.5 * strike)
+        break
+      case 2:
+        // Uppercut: blade low and back, then ripped up overhead.
+        swing(rig, 'ArmR1', 0.7 * windup - 3.2 * strike)
+        swing(rig, 'ArmR2', -0.5 * (1 - strike))
+        swing(rig, 'Spine1', 0.2 * windup - 0.25 * strike)
+        break
+      case 4:
+        // Spin slash: blade held straight out while the whole body turns a full circle.
+        swing(rig, 'ArmR1', -1.45)
+        sway(rig, 'ArmR1', 1.25)
+        swing(rig, 'ArmR2', -0.1)
+        break
+      case 3:
+        // Thrust: pull back, then lunge forward with the arm straight.
+        swing(rig, 'ArmR1', 0.4 * windup - 1.95 * strike)
+        swing(rig, 'ArmR2', -1.1 * windup * (1 - strike))
+        swing(rig, 'Spine1', 0.1 * windup - 0.4 * strike)
+        break
+      default:
+        // Chop: over the head and down through.
+        swing(rig, 'ArmR1', -2.9 * windup + 2.9 * strike)
+        swing(rig, 'ArmR2', -0.35 * (1 - strike))
+        swing(rig, 'Spine1', 0.3 * strike - 0.12 * windup)
+    }
+    return
+  }
+
+  if (armed) {
+    swing(rig, 'ArmR1', READY_POSE.shoulder)
+    sway(rig, 'ArmR1', READY_POSE.out)
+    swing(rig, 'ArmR2', READY_POSE.elbow)
+  }
+}
+
+/**
+ * Guard stance for the sword arm: raised in front with the elbow bent, so the
+ * held blade points up and forward, ready to strike. PlayerAvatar aims the grip
+ * against this pose.
+ */
+export const READY_POSE = { shoulder: -0.85, out: 0.22, elbow: -0.75 }
+
+const easeOut = (t) => 1 - (1 - t) * (1 - t)
