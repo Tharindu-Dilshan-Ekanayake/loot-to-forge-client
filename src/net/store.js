@@ -1,5 +1,7 @@
 import { create } from 'zustand'
 
+import { IS_TOUCH } from '../ui/device'
+
 /**
  * Client game state for React. Live, per-frame data (entity positions, hp) is NOT
  * here — 3D components read it straight off the Colyseus room in `useFrame`. This
@@ -9,7 +11,9 @@ import { create } from 'zustand'
 const SETTINGS_KEY = 'ltf.settings'
 
 function loadSettings() {
-  const defaults = { sfx: 0.8, muted: false, shadows: true, names: true }
+  // Phones start with shadows off: the shadow pass is the priciest thing a
+  // mobile GPU draws. They can still turn them on in Settings.
+  const defaults = { sfx: 0.8, muted: false, shadows: !IS_TOUCH, names: true }
   try {
     return { ...defaults, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}') }
   } catch {

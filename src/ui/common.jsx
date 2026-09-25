@@ -66,7 +66,7 @@ export function Panel({ title, children, width = 760, className = '', onClose, t
 
   return (
     <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/35 fade-in" onPointerDown={(e) => e.target === e.currentTarget && handleClose()}>
-      <div className={`pop-in relative ${className}`} style={{ width, maxWidth: '96vw' }}>
+      <div className={`pop-in panel-box relative ${className}`} style={{ width, maxWidth: '96vw' }}>
         <div className="mb-2 flex items-end justify-center">
           <St as="h2" className={`text-5xl ${titleClass}`}>
             {title}

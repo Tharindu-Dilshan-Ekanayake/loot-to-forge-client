@@ -1,11 +1,11 @@
 import { useFrame } from '@react-three/fiber'
 import { useEffect, useMemo, useRef } from 'react'
-import { AdditiveBlending, BufferAttribute, BufferGeometry, MeshStandardMaterial } from 'three'
+import { AdditiveBlending, BufferAttribute, BufferGeometry, CanvasTexture, MeshBasicMaterial, MeshStandardMaterial, SRGBColorSpace } from 'three'
 
 import { DUMMIES } from '../../shared/gameData'
 import TrainingDummy from '../entities/TrainingDummy'
 import { glowTexture, mat, textTexture } from '../textures'
-import { Block, Glow, Label, Solid, Torch } from './props'
+import { Block, Floaty, Glow, Label, Solid, Torch } from './props'
 
 /**
  * The training area: one row of pads along the lobby's west side, weakest in
@@ -27,6 +27,104 @@ const THEMES = {
   grave: { floor: 'stoneDark', trim: '#6b7280', rim: '#b98aff', fx: { mode: 'rise', color: '#c9a2ff', size: 0.9, count: 20, speed: 0.14, height: 4.5 } },
   ice: { floor: 'ice', trim: 'snow', rim: '#7fe3ff', fx: { mode: 'fall', color: '#f2fbff', size: 0.34, count: 50, speed: 0.2, height: 7 } },
   lava: { floor: 'nether', trim: '#ff3b1f', rim: '#ff3b1f', fx: { mode: 'burst', color: '#ffb02a', size: 0.55, count: 50, speed: 0.7, height: 7 } },
+  void: { floor: 'voidFloor', trim: '#6a3ad8', rim: '#c64dff', fx: { mode: 'orbit', color: '#d88aff', size: 0.6, count: 40, speed: 0.4, height: 5 } },
+  shadow: { floor: 'shadowFloor', trim: '#3a2a5a', rim: '#8a6aff', fx: { mode: 'rise', color: '#a08aff', size: 0.8, count: 30, speed: 0.18, height: 5 } },
+  crystal: { floor: 'crystalFloor', trim: '#c64dff', rim: '#5ff0ff', fx: { mode: 'fall', color: '#bff8ff', size: 0.4, count: 50, speed: 0.22, height: 7 } },
+  celestial: { floor: 'celestialFloor', trim: 'gold', rim: '#ffe07a', fx: { mode: 'orbit', color: '#fff3a0', size: 0.7, count: 44, speed: 0.3, height: 6 } },
+}
+
+/** A ring of runes, drawn once and tinted per pad: the glowing circle under each dummy. */
+let runeTex = null
+function runeTexture() {
+  if (runeTex) return runeTex
+  const S = 512
+  const c = document.createElement('canvas')
+  c.width = c.height = S
+  const ctx = c.getContext('2d')
+  const mid = S / 2
+  ctx.strokeStyle = '#ffffff'
+  ctx.fillStyle = '#ffffff'
+  ctx.lineCap = 'round'
+  for (const [r, w] of [
+    [236, 10],
+    [206, 4],
+    [150, 6],
+    [120, 3],
+  ]) {
+    ctx.lineWidth = w
+    ctx.beginPath()
+    ctx.arc(mid, mid, r, 0, Math.PI * 2)
+    ctx.stroke()
+  }
+  // Runes: little angular glyphs between the two outer rings.
+  const rand = seeded(9)
+  ctx.lineWidth = 5
+  for (let i = 0; i < 24; i += 1) {
+    const a = (i / 24) * Math.PI * 2
+    ctx.save()
+    ctx.translate(mid + Math.cos(a) * 221, mid + Math.sin(a) * 221)
+    ctx.rotate(a + Math.PI / 2)
+    ctx.beginPath()
+    const strokes = 2 + Math.floor(rand() * 3)
+    for (let k = 0; k < strokes; k += 1) {
+      ctx.moveTo((rand() - 0.5) * 16, (rand() - 0.5) * 12)
+      ctx.lineTo((rand() - 0.5) * 16, (rand() - 0.5) * 12)
+    }
+    ctx.stroke()
+    ctx.restore()
+  }
+  // A six-pointed star in the middle.
+  ctx.lineWidth = 5
+  for (const off of [0, Math.PI / 3]) {
+    ctx.beginPath()
+    for (let k = 0; k <= 3; k += 1) {
+      const a = off + (k / 3) * Math.PI * 2 - Math.PI / 2
+      const x = mid + Math.cos(a) * 146
+      const y = mid + Math.sin(a) * 146
+      if (k === 0) ctx.moveTo(x, y)
+      else ctx.lineTo(x, y)
+    }
+    ctx.stroke()
+  }
+  runeTex = new CanvasTexture(c)
+  runeTex.colorSpace = SRGBColorSpace
+  return runeTex
+}
+
+const runeMaterials = new Map()
+function runeMaterial(color) {
+  if (!runeMaterials.has(color)) {
+    runeMaterials.set(
+      color,
+      new MeshBasicMaterial({ map: runeTexture(), color, transparent: true, opacity: 0.85, blending: AdditiveBlending, depthWrite: false, toneMapped: false }),
+    )
+  }
+  return runeMaterials.get(color)
+}
+
+/** The rune circles turn slowly; one frame hook turns them all. */
+function RuneCircles({ pads }) {
+  const refs = useRef([])
+  useFrame((_, dt) => {
+    for (const m of refs.current) if (m) m.rotation.z += dt * 0.25
+  })
+  return pads.map((d, i) => {
+    const theme = THEMES[d.theme] || THEMES.basic
+    return (
+      <mesh
+        key={d.id}
+        ref={(m) => {
+          refs.current[i] = m
+        }}
+        position={[d.pos[0] - 0.85, 0.33, d.pos[2]]}
+        rotation={[-Math.PI / 2, 0, i]}
+        material={runeMaterial(theme.rim)}
+        renderOrder={1}
+      >
+        <planeGeometry args={[6.4, 6.4]} />
+      </mesh>
+    )
+  })
 }
 
 /** Deterministic pseudo-random so the particles don't reshuffle on remount. */
@@ -133,8 +231,79 @@ function PadRim({ position, color, phase }) {
   )
 }
 
+/**
+ * A raised frame in the pad's trim, and two lantern posts on its front corners
+ * glowing in the pad's colour. All static, so the world batches it.
+ */
+function PadFrame({ x, z, theme }) {
+  const t = THEMES[theme] || THEMES.basic
+  const cx = x - 0.85
+  // Just outside the breathing rim (PadRim), so the two never overlap.
+  const hw = PAD.w / 2 + 0.45
+  // (and clear of the next pad's frame: the first row's pads are 10.15 apart).
+  const hd = PAD.d / 2 + 0.35
+  const trim = t.trim
+  const glow = mat(t.rim, { emissive: t.rim, emissiveIntensity: 1.2 })
+  return (
+    <>
+      <Block size={[PAD.w + 1.3, 0.42, 0.4]} position={[cx, 0, z - hd]} base m={trim} tile={1.5} />
+      <Block size={[PAD.w + 1.3, 0.42, 0.4]} position={[cx, 0, z + hd]} base m={trim} tile={1.5} />
+      <Block size={[0.4, 0.42, PAD.d + 0.3]} position={[cx - hw, 0, z]} base m={trim} tile={1.5} />
+      <Block size={[0.4, 0.42, PAD.d + 0.3]} position={[cx + hw, 0, z]} base m={trim} tile={1.5} />
+      {[-1, 1].map((s) => (
+        <group key={s} position={[cx + hw, 0, z + s * hd]}>
+          <Block size={[0.6, 2.4, 0.6]} base m={trim} tile={1} />
+          <Block size={[0.8, 0.2, 0.8]} position={[0, 2.4, 0]} base m="stoneDark" tile={1} />
+          <Block size={[0.45, 0.45, 0.45]} position={[0, 2.6, 0]} base m={glow} cast={false} />
+        </group>
+      ))}
+    </>
+  )
+}
+
 /** The small props that dress each pad, on its back (west) edge. */
 function PadDecor({ theme, x, z }) {
+  if (theme === 'void') {
+    return [-2.8, 2.8].map((o) => (
+      <Floaty key={o} position={[x - 3.7, 2.2, z + o]} amp={0.35} speed={1.1}>
+        <mesh material={mat('#b04dff', { emissive: '#b04dff', emissiveIntensity: 0.9 })}>
+          <octahedronGeometry args={[0.55, 0]} />
+        </mesh>
+      </Floaty>
+    ))
+  }
+  if (theme === 'shadow') {
+    return [-3, 0, 3].map((o) => (
+      <mesh key={o} position={[x - 3.8, 1.6, z + o]} material={mat('#1c1830', { flatShading: true })} castShadow>
+        <coneGeometry args={[0.5, 3.2, 5]} />
+      </mesh>
+    ))
+  }
+  if (theme === 'crystal') {
+    return [-2.8, 2.8].map((o) => (
+      <group key={o} position={[x - 3.7, 0.3, z + o]}>
+        {[
+          [0, 0, 2.2, 0],
+          [0.4, 0.2, 1.4, 0.4],
+          [-0.35, -0.2, 1.2, -0.5],
+        ].map(([cx, cz, h, tilt], i) => (
+          <mesh key={i} position={[cx, h * 0.45, cz]} rotation={[tilt * 0.4, i, tilt]} scale={[1, h, 1]} material={mat(i ? '#ff7ae0' : '#5ff0ff', { emissive: i ? '#ff7ae0' : '#5ff0ff', emissiveIntensity: 0.7 })}>
+            <octahedronGeometry args={[0.4, 0]} />
+          </mesh>
+        ))}
+      </group>
+    ))
+  }
+  if (theme === 'celestial') {
+    return [-3, 3].map((o) => (
+      <group key={o} position={[x - 3.8, 0.3, z + o]}>
+        <Block size={[0.7, 3.2, 0.7]} base m="gold" tile={1} />
+        <mesh position={[0, 3.7, 0]} material={mat('#fff3a0', { emissive: '#ffe07a', emissiveIntensity: 1.2 })}>
+          <sphereGeometry args={[0.45, 12, 8]} />
+        </mesh>
+      </group>
+    ))
+  }
   if (theme === 'fire') {
     return (
       <>
@@ -193,16 +362,26 @@ export function TrainArea() {
   useEffect(() => () => sign.texture.dispose(), [sign])
 
   const pads = DUMMIES.filter((d) => d.theme)
-  const zs = pads.map((d) => d.pos[2])
+  // The first row runs unbroken along the wall; the second sits either side of
+  // the road, so each of its pads gets its own base instead of one walkway.
+  const firstX = pads[0].pos[0]
+  const row = pads.filter((d) => d.pos[0] === firstX)
+  const zs = row.map((d) => d.pos[2])
   const zMin = Math.min(...zs) - PAD.d / 2 - 1
   const zMax = Math.max(...zs) + PAD.d / 2 + 1
-  const px = pads[0].pos[0] - 0.85
+  const px = firstX - 0.85
 
   return (
     <>
-      {/* One stone walkway under the whole row, so it reads as a single area. */}
+      {/* One stone walkway under the whole first row, so it reads as a single area. */}
       <Block size={[PAD.w + 2, 0.1, zMax - zMin]} position={[px, 0.05, (zMin + zMax) / 2]} m="stoneDark" tile={1.4} cast={false} />
       <Block size={[0.5, 0.16, zMax - zMin]} position={[px + PAD.w / 2 + 0.75, 0.08, (zMin + zMax) / 2]} m="gold" tile={1.25} cast={false} />
+      {pads
+        .filter((d) => d.pos[0] !== firstX)
+        .map((d) => (
+          <Block key={`base${d.id}`} size={[PAD.w + 2, 0.1, PAD.d + 1.4]} position={[d.pos[0] - 0.85, 0.05, d.pos[2]]} m="stoneDark" tile={1.4} cast={false} />
+        ))}
+      <RuneCircles pads={pads} />
       {pads.map((d, i) => {
         const theme = THEMES[d.theme] || THEMES.basic
         const [x, , z] = d.pos
@@ -211,6 +390,7 @@ export function TrainArea() {
             <Solid>
               <Block size={[PAD.w, 0.3, PAD.d]} position={[x - 0.85, 0, z]} base m={theme.floor} tile={2} />
             </Solid>
+            <PadFrame x={x} z={z} theme={d.theme} />
             <PadRim position={[x - 0.85, 0, z]} color={theme.rim} phase={i * 0.9} />
             <PadDecor theme={d.theme} x={x} z={z} />
             <PadFx position={[x - 0.85, 0, z]} fx={theme.fx} seed={101 + i * 37} />

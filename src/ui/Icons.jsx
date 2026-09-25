@@ -166,6 +166,19 @@ export function GearIcon({ size = 42 }) {
   )
 }
 
+/** The guide: an open book with a question mark. */
+export function GuideIcon({ size = 42 }) {
+  return (
+    <Svg size={size}>
+      <path d="M32 16c-8-6-18-6-26-3v38c8-3 18-3 26 3 8-6 18-6 26-3V13c-8-3-18-3-26 3z" fill="#fff" />
+      <path d="M32 16v38" stroke="#3a3d45" strokeWidth="3" />
+      <path d="M40 27a5 5 0 1 1 7 4.6c-1.4.7-2 1.6-2 3.4" stroke="#3a3d45" strokeWidth="3.5" fill="none" strokeLinecap="round" />
+      <circle cx="45" cy="41.5" r="2.2" fill="#3a3d45" />
+      <path d="M12 24h14M12 31h14M12 38h10" stroke="#3a3d45" strokeWidth="3" strokeLinecap="round" />
+    </Svg>
+  )
+}
+
 export function EyeIcon({ size = 42, off = false }) {
   return (
     <Svg size={size}>

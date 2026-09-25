@@ -270,20 +270,23 @@ function FinalPortal() {
   useFrame((_, dt) => {
     if (ring.current) ring.current.rotation.z += dt * 0.8
   })
+  // Built in the last stage's own colours.
+  const theme = DUNGEON_THEMES[stageById(N).theme]
+  const glow = theme.accent
   return (
     <group position={[0, 0, Z_END + 1]}>
-      <Block size={[HW * 2 + 6, WALL_H + 4, 3]} position={[0, 0, -2.5]} base m="celestialWall" tile={4} />
+      <Block size={[HW * 2 + 6, WALL_H + 4, 3]} position={[0, 0, -2.5]} base m={theme.wall} tile={4} />
       <group ref={ring} position={[0, 6, 0]}>
-        <mesh material={glowMat('#ffd23b', 1.2)}>
+        <mesh material={glowMat(glow, 1.2)}>
           <torusGeometry args={[4.5, 0.5, 8, 40]} />
         </mesh>
       </group>
       <mesh position={[0, 6, -0.2]}>
         <circleGeometry args={[4.2, 40]} />
-        <meshBasicMaterial color="#ffe89a" transparent opacity={0.55} blending={AdditiveBlending} depthWrite={false} />
+        <meshBasicMaterial color={glow} transparent opacity={0.55} blending={AdditiveBlending} depthWrite={false} />
       </mesh>
-      <Glow position={[0, 6, 1]} color="#ffd23b" size={16} opacity={0.5} />
-      <Label text="Back to Lobby" position={[0, 12.5, 1]} height={1.6} colors={['#ffffff', '#ffe07a']} stroke="#3a1a00" />
+      <Glow position={[0, 6, 1]} color={glow} size={16} opacity={0.5} />
+      <Label text="Back to Lobby" position={[0, 12.5, 1]} height={1.6} colors={['#ffffff', glow]} stroke="#1a0020" />
     </group>
   )
 }
@@ -439,10 +442,164 @@ function LavaPool({ position, size = 3 }) {
   )
 }
 
+/** A murky pool that glows faintly, for the marsh and the plague catacombs. */
+function BogPool({ position, size = 3, color = '#6dbf3a' }) {
+  return (
+    <group position={position}>
+      <Block size={[size, 0.06, size * 0.8]} position={[0, 0.03, 0]} m={glowMat(color, 0.55)} cast={false} />
+      <Glow position={[0, 0.5, 0]} color={color} size={size * 1.4} opacity={0.3} />
+    </group>
+  )
+}
+
+/** A clump of tall reeds. */
+function Reeds({ position, scale = 1 }) {
+  return (
+    <group position={position} scale={scale}>
+      {[
+        [0, 0, 2.6],
+        [0.4, 0.3, 2],
+        [-0.35, 0.2, 2.2],
+        [0.1, -0.4, 1.7],
+      ].map(([x, z, h], i) => (
+        <Block key={i} size={[0.14, h, 0.14]} position={[x, 0, z]} base m={i % 2 ? '#5a7a2a' : '#4a6a24'} cast={false} />
+      ))}
+    </group>
+  )
+}
+
+/** A heap of bones with a skull on top. */
+function BonePile({ position, scale = 1 }) {
+  return (
+    <group position={position} scale={scale}>
+      <Block size={[2.2, 0.35, 0.3]} position={[0, 0.2, 0]} rotation={[0, 0.5, 0]} m="#e8e4d4" cast={false} />
+      <Block size={[1.8, 0.3, 0.3]} position={[0.2, 0.45, 0.1]} rotation={[0, -0.7, 0]} m="#d8d4c6" cast={false} />
+      <Block size={[0.9, 0.8, 0.9]} position={[0, 0.95, 0]} m="#f0eee4" />
+      <Block size={[0.24, 0.24, 0.05]} position={[-0.2, 1.05, 0.46]} m="#1b1b1b" cast={false} />
+      <Block size={[0.24, 0.24, 0.05]} position={[0.2, 1.05, 0.46]} m="#1b1b1b" cast={false} />
+    </group>
+  )
+}
+
+/** A bubbling iron cauldron of something green. */
+function Cauldron({ position, color = '#a8ff3a' }) {
+  return (
+    <group position={position}>
+      <mesh position={[0, 0.7, 0]} material={mat('#2a2d33', { metalness: 0.6, roughness: 0.45 })} castShadow>
+        <cylinderGeometry args={[0.9, 0.7, 1.3, 12]} />
+      </mesh>
+      <Block size={[1.4, 0.05, 1.4]} position={[0, 1.36, 0]} m={glowMat(color, 1.1)} cast={false} />
+      <Glow position={[0, 1.7, 0]} color={color} size={3} opacity={0.45} />
+    </group>
+  )
+}
+
+/** A barricade of sharpened stakes. */
+function SpikeBarricade({ position, rotation = 0, color = '#3d434b' }) {
+  return (
+    <group position={position} rotation={[0, rotation, 0]}>
+      <Block size={[3, 0.5, 0.5]} position={[0, 0.6, 0]} m="woodDark" tile={2} />
+      {[-1.1, -0.35, 0.4, 1.15].map((x, i) => (
+        <mesh key={i} position={[x, 1.2, 0]} rotation={[i % 2 ? 0.35 : -0.35, 0, 0]} material={mat(color, { metalness: 0.5, roughness: 0.4 })} castShadow>
+          <coneGeometry args={[0.22, 1.6, 5]} />
+        </mesh>
+      ))}
+    </group>
+  )
+}
+
+/** A glowing toadstool. */
+function Mushroom({ position, color = '#e05aff', scale = 1 }) {
+  return (
+    <group position={position} scale={scale}>
+      <Block size={[0.4, 1.2, 0.4]} base m="#e8dcc0" cast={false} />
+      <mesh position={[0, 1.3, 0]} material={glowMat(color, 0.8)}>
+        <sphereGeometry args={[0.8, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />
+      </mesh>
+    </group>
+  )
+}
+
+/** A jagged spire of dark rock. */
+function Spire({ x, z, r, color, glow }) {
+  return (
+    <group>
+      <mesh position={[x, 1.6 + r, z]} material={mat(color, { flatShading: true })} castShadow>
+        <coneGeometry args={[0.7 + r * 0.4, 3.4 + r * 2.4, 5]} />
+      </mesh>
+      {glow && <Glow position={[x, 0.6, z]} color={glow} size={2.6} opacity={0.35} />}
+    </group>
+  )
+}
+
 /** One edge prop for a theme. `r` in [0,1) picks the variant. */
 function EdgeProp({ deco, x, z, r }) {
   const p = [x, 0, z]
   switch (deco) {
+    case 'marsh':
+      if (r < 0.3) return <BogPool position={p} size={2.4 + r * 3} />
+      if (r < 0.55) return <Reeds position={p} scale={0.9 + r * 0.6} />
+      if (r < 0.8) return <DeadTree position={p} scale={0.9 + r * 0.4} />
+      return <Torch position={p} color="#9dff5a" />
+    case 'bonewaste':
+      if (r < 0.4) return <BonePile position={p} scale={0.9 + r * 0.6} />
+      if (r < 0.65) return <Spire x={x} z={z} r={r} color="#e8e0cc" />
+      if (r < 0.8) return <DeadTree position={p} scale={0.8 + r * 0.3} />
+      return <Torch position={p} color="#ff5a3b" />
+    case 'plague':
+      if (r < 0.25) return <Cauldron position={p} />
+      if (r < 0.5) return <Grave position={p} rotation={(r - 0.35) * 0.9} />
+      if (r < 0.7) return <BogPool position={p} size={2.2} color="#a8ff3a" />
+      return <Torch position={p} color="#a8ff3a" />
+    case 'fortress':
+      if (r < 0.3) return <SpikeBarricade position={p} rotation={Math.PI / 2} />
+      if (r < 0.55) return <Banner position={p} color="#1b1b22" />
+      if (r < 0.75) return <Torch position={p} color="#ff9a1f" />
+      return <Block size={[1.6, 1.6, 1.6]} position={p} base m="metalDark" tile={1.6} />
+    case 'abyss':
+      if (r < 0.35) return <Crystal position={p} color={r < 0.18 ? '#3ef6ff' : '#2f86ff'} scale={0.8 + r} />
+      if (r < 0.7) return <Spire x={x} z={z} r={r} color="#14283a" glow="#3ef6ff" />
+      return <Mushroom position={p} color="#3ef6ff" scale={0.8 + r * 0.5} />
+    case 'grove':
+      if (r < 0.35) return <Tree position={p} scale={0.8 + r * 0.5} leaf={r < 0.18 ? '#5a1a6a' : '#3a1a4a'} />
+      if (r < 0.6) return <Mushroom position={p} color={r < 0.45 ? '#e05aff' : '#ff5ab0'} scale={0.8 + r * 0.6} />
+      if (r < 0.85) return <Spire x={x} z={z} r={r} color="#3a1a3a" />
+      return <DeadTree position={p} scale={0.9} />
+    case 'cathedral':
+      if (r < 0.3) return <Banner position={p} color="#8a0a1a" />
+      if (r < 0.55) return <Torch position={p} color="#ff2d3d" />
+      if (r < 0.75) return <Grave position={p} rotation={(r - 0.6) * 0.8} />
+      return (
+        <group position={p}>
+          <Block size={[1.4, 6, 1.4]} base m="cathedralWall" tile={2} />
+          <Block size={[1.8, 0.5, 1.8]} position={[0, 6, 0]} base m="gold" tile={1} />
+        </group>
+      )
+    case 'ashland':
+      if (r < 0.3) return <LavaPool position={p} size={2 + r * 3} />
+      if (r < 0.65) return <Spire x={x} z={z} r={r} color="#1c1818" glow={r < 0.45 ? '#ff6a1f' : null} />
+      return <DeadTree position={p} scale={0.8 + r * 0.4} />
+    case 'eclipse':
+      if (r < 0.35)
+        return (
+          <group position={p}>
+            <Block size={[1.4, 5, 1.4]} base m="eclipseWall" tile={2} />
+            <Torch position={[0, 3, 0]} color="#ffb000" />
+          </group>
+        )
+      if (r < 0.65) return <Crystal position={p} color="#ffb000" scale={0.7 + r * 0.5} />
+      return <Spire x={x} z={z} r={r} color="#1c1830" glow="#ffb000" />
+    case 'endless':
+      if (r < 0.45)
+        return (
+          <Floaty position={[x, 2 + r * 3, z]} amp={0.4} speed={0.8 + r}>
+            <mesh material={glowMat('#ff2bd6')}>
+              <octahedronGeometry args={[0.4 + r * 0.6, 0]} />
+            </mesh>
+            <Glow position={[0, 0, 0]} color="#ff2bd6" size={2.5} opacity={0.4} />
+          </Floaty>
+        )
+      return <Spire x={x} z={z} r={r} color="#12031f" glow="#ff2bd6" />
     case 'ironwood':
       if (r < 0.3) return <Block size={[1.5, 1.5, 1.5]} position={p} base m="wood" tile={1.5} />
       if (r < 0.55) return <Barrel position={p} scale={0.9 + r * 0.4} />
@@ -552,6 +709,49 @@ function Backdrop({ deco, side, z, r }) {
     case 'camp':
     case 'jungle':
       return <Tree position={p} scale={2 + r} leaf={r < 0.5 ? '#3fbf4a' : '#2f9a44'} />
+    case 'marsh':
+    case 'grove':
+      return <Tree position={p} scale={2 + r} leaf={deco === 'marsh' ? (r < 0.5 ? '#2f4a24' : '#3a5a2a') : r < 0.5 ? '#3a1a4a' : '#5a1a6a'} />
+    case 'bonewaste':
+      return (
+        <mesh position={[x, 9 + r * 5, z]} material={mat('#d8d0bc', { flatShading: true })}>
+          <coneGeometry args={[9 + r * 5, 18 + r * 10, 6]} />
+        </mesh>
+      )
+    case 'plague':
+    case 'cathedral':
+      return <Block size={[8 + r * 6, 16 + r * 14, 8]} position={p} base m={deco === 'plague' ? 'plagueWall' : 'cathedralWall'} tile={4} cast={false} />
+    case 'fortress':
+      return (
+        <group position={p}>
+          <mesh position={[0, 12, 0]} material={mat('fortressWall')}>
+            <cylinderGeometry args={[4, 4.4, 24, 12]} />
+          </mesh>
+          <mesh position={[0, 26, 0]} material={mat('#1b1b22')}>
+            <coneGeometry args={[5, 6, 12]} />
+          </mesh>
+        </group>
+      )
+    case 'ashland':
+      return (
+        <group position={p}>
+          <mesh position={[0, 10 + r * 5, 0]} material={mat('#1c1818', { flatShading: true })}>
+            <coneGeometry args={[9 + r * 4, 20 + r * 10, 6]} />
+          </mesh>
+          <Glow position={[0, 21 + r * 10, 0]} color="#ff6a1f" size={14} opacity={0.45} />
+        </group>
+      )
+    case 'abyss':
+    case 'eclipse':
+    case 'endless': {
+      const tint = { abyss: '#3ef6ff', eclipse: '#ffb000', endless: '#ff2bd6' }[deco]
+      return (
+        <Floaty position={[x, 18 + r * 10, z]} amp={1.2} speed={0.4} spin={0.1}>
+          <Block size={[8, 3, 8]} m={{ abyss: 'abyssWall', eclipse: 'eclipseWall', endless: 'endlessWall' }[deco]} tile={4} cast={false} />
+          <Crystal position={[0, 1.5, 0]} color={tint} scale={1.6} />
+        </Floaty>
+      )
+    }
     case 'keep':
       return (
         <group position={p}>

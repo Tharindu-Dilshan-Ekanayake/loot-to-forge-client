@@ -25,10 +25,20 @@ const START_PITCH = 0.32
 
 const DRAG_SENSITIVITY = 0.005
 const ZOOM_SENSITIVITY = 0.01
+/** Touch: a finger drag turns the view a little faster than the mouse; pinch zooms. */
+const TOUCH_SENSITIVITY = 0.0075
+const PINCH_SENSITIVITY = 0.03
 
-// Higher = snappier. Framerate-independent via the pow() smoothing below.
-const POSITION_SMOOTHING = 4
-const LOOK_SMOOTHING = 8
+/**
+ * How fast the camera's follow point catches up with the player, per second
+ * (1/rate is the lag). Tight across the ground so the view feels attached to
+ * the character, not towed behind it; softer vertically so jumps, landings and
+ * steps don't bob the whole view.
+ */
+const FOLLOW_RATE_XZ = 16
+const FOLLOW_RATE_Y = 7
+/** Mouse-wheel zoom glides rather than jumping a notch at a time. */
+const ZOOM_RATE = 12
 
 const _desired = new Vector3()
 const _target = new Vector3()
@@ -39,8 +49,8 @@ const BASE_FOV = 62
 /**
  * Third-person orbit camera.
  *
- * Trails the player's rigid body, easing both position and look-at target.
- * Right-click drag orbits, the mouse wheel zooms.
+ * Orbits a follow point that eases after the player (tightly across the ground,
+ * softer vertically). Right-click drag orbits, the mouse wheel zooms.
  *
  * Reads the Rapier body directly rather than React state - the body is the
  * authoritative transform and updates every physics step, not every render.
@@ -55,8 +65,9 @@ export function FollowCamera({ bodyRef }) {
   // every mousemove and the frame loop reads it - re-rendering would be wasteful.
   const orbit = useRef({ yaw: 0, pitch: START_PITCH, distance: START_DISTANCE })
   const lookAt = useRef(new Vector3())
-  /** The smoothed camera position before shake, so shake never feeds back into the follow. */
-  const base = useRef(new Vector3())
+  /** The smoothed point on the player the camera orbits, and the eased zoom. */
+  const focus = useRef(new Vector3())
+  const zoom = useRef(START_DISTANCE)
   const initialised = useRef(false)
 
   useEffect(() => {
@@ -66,8 +77,22 @@ export function FollowCamera({ bodyRef }) {
     let dragging = false
     let lastX = 0
     let lastY = 0
+    /** Fingers on the screen (touch): one drags the view round, two pinch to zoom. */
+    const touches = new Map()
+    let pinch = 0
+
+    const spread = () => {
+      const [a, b] = [...touches.values()]
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
 
     const onPointerDown = (e) => {
+      if (e.pointerType === 'touch') {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY })
+        el.setPointerCapture?.(e.pointerId)
+        if (touches.size === 2) pinch = spread()
+        return
+      }
       if (e.button !== 2) return // right button only
       dragging = true
       lastX = e.clientX
@@ -76,18 +101,41 @@ export function FollowCamera({ bodyRef }) {
     }
 
     const onPointerMove = (e) => {
+      const o = orbit.current
+      if (e.pointerType === 'touch') {
+        const t = touches.get(e.pointerId)
+        if (!t) return
+        const dx = e.clientX - t.x
+        const dy = e.clientY - t.y
+        t.x = e.clientX
+        t.y = e.clientY
+        if (touches.size === 1) {
+          o.yaw -= dx * TOUCH_SENSITIVITY
+          o.pitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, o.pitch + dy * TOUCH_SENSITIVITY))
+        } else if (touches.size === 2) {
+          const s = spread()
+          o.distance = Math.min(MAX_DISTANCE, Math.max(MIN_DISTANCE, o.distance - (s - pinch) * PINCH_SENSITIVITY))
+          pinch = s
+        }
+        return
+      }
       if (!dragging) return
       const dx = e.clientX - lastX
       const dy = e.clientY - lastY
       lastX = e.clientX
       lastY = e.clientY
 
-      const o = orbit.current
       o.yaw -= dx * DRAG_SENSITIVITY
       o.pitch = Math.min(MAX_PITCH, Math.max(MIN_PITCH, o.pitch + dy * DRAG_SENSITIVITY))
     }
 
     const endDrag = (e) => {
+      if (e.pointerType === 'touch') {
+        touches.delete(e.pointerId)
+        if (touches.size === 2) pinch = spread()
+        el.releasePointerCapture?.(e.pointerId)
+        return
+      }
       if (!dragging) return
       dragging = false
       el.releasePointerCapture?.(e.pointerId)
@@ -169,28 +217,30 @@ export function FollowCamera({ bodyRef }) {
     // A/D turn the view. Positive yaw swings the camera's forward to the left.
     if (local.turn) orbit.current.yaw += local.turn * TURN_SPEED * delta
 
-    // Spherical -> cartesian. yaw 0 puts the camera behind the player on +Z.
-    const { yaw, pitch, distance } = orbit.current
-    const horizontal = Math.cos(pitch) * distance
-    _desired.set(
-      _target.x + Math.sin(yaw) * horizontal,
-      _target.y + Math.sin(pitch) * distance + LOOK_HEIGHT,
-      _target.z + Math.cos(yaw) * horizontal,
-    )
-
-    if (!initialised.current || base.current.distanceTo(_desired) > 60) {
+    const f = focus.current
+    if (!initialised.current || f.distanceTo(_target) > 30) {
       // Avoid a long swoop in from wherever the camera was (spawn, teleports).
-      base.current.copy(_desired)
-      lookAt.current.copy(_target).setY(_target.y + LOOK_HEIGHT)
+      f.copy(_target)
+      zoom.current = orbit.current.distance
       initialised.current = true
     }
+    // 1 - exp(-rate * delta) keeps the easing the same at any framerate.
+    const kxz = 1 - Math.exp(-FOLLOW_RATE_XZ * delta)
+    const ky = 1 - Math.exp(-FOLLOW_RATE_Y * delta)
+    f.x += (_target.x - f.x) * kxz
+    f.z += (_target.z - f.z) * kxz
+    f.y += (_target.y - f.y) * ky
+    zoom.current += (orbit.current.distance - zoom.current) * (1 - Math.exp(-ZOOM_RATE * delta))
 
-    // 1 - pow(x, delta) keeps the easing rate consistent across framerates.
-    base.current.lerp(_desired, 1 - Math.pow(0.001, delta * (POSITION_SMOOTHING / 10)))
-    camera.position.copy(base.current)
-
-    _target.y += LOOK_HEIGHT
-    lookAt.current.lerp(_target, 1 - Math.pow(0.001, delta * (LOOK_SMOOTHING / 10)))
+    // Spherical -> cartesian. yaw 0 puts the camera behind the player on +Z.
+    // Placed exactly on the orbit round the follow point, so the camera and its
+    // aim always agree and the player sits steady in frame.
+    const { yaw, pitch } = orbit.current
+    const distance = zoom.current
+    const horizontal = Math.cos(pitch) * distance
+    _desired.set(f.x + Math.sin(yaw) * horizontal, f.y + Math.sin(pitch) * distance + LOOK_HEIGHT, f.z + Math.cos(yaw) * horizontal)
+    camera.position.copy(_desired)
+    lookAt.current.set(f.x, f.y + LOOK_HEIGHT, f.z)
 
     // Shake on impacts: a decaying wobble layered on top of the smoothed follow.
     const shakeLeft = local.shakeUntil - performance.now()

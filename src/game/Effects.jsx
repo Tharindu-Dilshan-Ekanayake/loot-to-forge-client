@@ -475,12 +475,14 @@ export function Effects() {
           const c = new Vector3(d.x, d.y, d.z)
           for (let i = 0; i < 4; i += 1) slash(c, d.ry + (i / 4) * Math.PI * 2, color, true, 0)
           shock(new Vector3(d.x, d.y - 0.85, d.z), color, 4.5, 0.4)
-        } else if (d.combo === 1) slash(p, d.ry, color, false, 0)
-        else if (d.combo === 2) slash(p.setY(p.y + 0.4), d.ry, color, false, -1.2)
-        else if (d.combo === 3) {
-          trail(new Vector3(d.x, d.y + 0.3, d.z), new Vector3(Math.sin(d.ry), 0, Math.cos(d.ry)), 4.5, color)
-          slash(p.addScaledVector(new Vector3(Math.sin(d.ry), 0, Math.cos(d.ry)), 1.2), d.ry, color, true, 0.2)
-        } else slash(p, d.ry, color, false, 1.2)
+        } else {
+          // The circular sweep: one wide, level arc round the front of the body.
+          const c = new Vector3(d.x, d.y + 0.25, d.z)
+          const side = d.combo % 2 === 0 ? 1 : -1
+          slash(c, d.ry + side * 0.7, color, true, 0)
+          slash(c, d.ry, color, true, 0)
+          slash(c, d.ry - side * 0.7, color, true, 0)
+        }
       } else if (type === 'levelup') {
         const p = posOf(d.id)
         if (!p) return

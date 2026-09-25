@@ -1,0 +1,406 @@
+/* ---------------------------------------------------------------------------
+ * Cursor: a little steel sword, its tip the hot spot; it turns gold over
+ * anything you can press.
+ * ------------------------------------------------------------------------- */
+html,
+body,
+canvas {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M2 2 L7 3.2 L22.5 18.7 L18.7 22.5 L3.2 7 Z' fill='%23eef3f8' stroke='%23151522' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cpath d='M4.5 4.5 L20 20' stroke='%2393a6bd' stroke-width='1.2'/%3E%3Cpath d='M16.5 24.5 L24.5 16.5' stroke='%23151522' stroke-width='4.6' stroke-linecap='round'/%3E%3Cpath d='M16.5 24.5 L24.5 16.5' stroke='%23ffc629' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M21.5 21.5 L27.5 27.5' stroke='%23151522' stroke-width='4.6' stroke-linecap='round'/%3E%3Cpath d='M21.5 21.5 L27.5 27.5' stroke='%238a5a30' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='28.6' cy='28.6' r='2.2' fill='%23ffc629' stroke='%23151522' stroke-width='1.2'/%3E%3C/svg%3E")
+      2 2,
+    auto;
+}
+button,
+a,
+[role='button'],
+input[type='range'],
+.tile,
+.tab {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M2 2 L7 3.2 L22.5 18.7 L18.7 22.5 L3.2 7 Z' fill='%23fff3a0' stroke='%23151522' stroke-width='1.6' stroke-linejoin='round'/%3E%3Cpath d='M4.5 4.5 L20 20' stroke='%23ffb000' stroke-width='1.2'/%3E%3Cpath d='M16.5 24.5 L24.5 16.5' stroke='%23151522' stroke-width='4.6' stroke-linecap='round'/%3E%3Cpath d='M16.5 24.5 L24.5 16.5' stroke='%23ff5a3b' stroke-width='2.4' stroke-linecap='round'/%3E%3Cpath d='M21.5 21.5 L27.5 27.5' stroke='%23151522' stroke-width='4.6' stroke-linecap='round'/%3E%3Cpath d='M21.5 21.5 L27.5 27.5' stroke='%238a5a30' stroke-width='2.4' stroke-linecap='round'/%3E%3Ccircle cx='28.6' cy='28.6' r='2.2' fill='%23ff5a3b' stroke='%23151522' stroke-width='1.2'/%3E%3C/svg%3E")
+      2 2,
+    pointer;
+}
+
+/* ---------------------------------------------------------------------------
+ * The guide button (under the eye) and the guide panel
+ * ------------------------------------------------------------------------- */
+.guide-btn {
+  background: linear-gradient(#ffcf4a, #ff8a00);
+  border-color: #fff3c0;
+  animation: guide-glow 2.4s ease-in-out infinite;
+}
+.guide-btn-label {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  paint-order: stroke fill;
+  -webkit-text-stroke: 0.28em var(--stroke);
+  white-space: nowrap;
+}
+@keyframes guide-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 3px #1b1c22,
+      inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+      0 0 0 rgba(255, 190, 40, 0);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px #1b1c22,
+      inset 0 -4px 0 rgba(0, 0, 0, 0.3),
+      0 0 18px rgba(255, 190, 40, 0.85);
+  }
+}
+
+.guide {
+  display: flex;
+  gap: 16px;
+  min-height: 460px;
+}
+.guide-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 190px;
+  flex-shrink: 0;
+}
+.guide-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 3px solid #151522;
+  background: linear-gradient(#3a3f55, #262a3a);
+  box-shadow: inset 0 -4px 0 rgba(0, 0, 0, 0.3);
+  transition:
+    transform 0.12s,
+    background 0.12s;
+  text-align: left;
+}
+.guide-tab:hover {
+  transform: translateX(3px);
+}
+.guide-tab.active {
+  background: linear-gradient(#ffd84a, #ff9a00);
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.25),
+    0 0 14px rgba(255, 180, 30, 0.55);
+}
+.guide-tab-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.3);
+  flex-shrink: 0;
+}
+.guide-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.guide-lead {
+  margin: 0 0 4px;
+  text-align: center;
+  font-size: 19px;
+  line-height: 1.35;
+  color: #dfe6ff;
+}
+.guide-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.guide-card-icon {
+  display: grid;
+  place-items: center;
+  width: 62px;
+  height: 62px;
+  border-radius: 14px;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.35));
+  border: 2px solid rgba(0, 0, 0, 0.4);
+  flex-shrink: 0;
+}
+.guide-text {
+  margin-top: 2px;
+  font-size: 17px;
+  line-height: 1.4;
+  color: #e8ecff;
+}
+.guide-text b,
+.guide-lead b {
+  color: #ffe07a;
+}
+.keycap {
+  display: inline-grid;
+  place-items: center;
+  min-width: 28px;
+  height: 26px;
+  padding: 0 7px;
+  margin: 0 2px;
+  border-radius: 7px;
+  background: linear-gradient(#ffffff, #d6dbe8);
+  border: 2px solid #151522;
+  box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+  color: #151522;
+  font-size: 14px;
+  font-weight: 700;
+  vertical-align: middle;
+}
+.guide-keys {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 18px;
+  margin-top: 6px;
+}
+.guide-key-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.guide-key-row > span:first-child {
+  min-width: 96px;
+}
+.guide-loop {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0 8px;
+}
+.guide-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 92px;
+  padding: 8px 4px;
+  border-radius: 14px;
+  border: 3px solid;
+  background: rgba(0, 0, 0, 0.35);
+}
+.guide-arrow {
+  margin: 0 4px;
+  font-size: 22px;
+  color: #ffd23b;
+  text-shadow: 0 2px 0 #151522;
+}
+.guide-tip {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 18px;
+  color: #e8ecff;
+}
+.guide-tip-n {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(#ffd84a, #ff9a00);
+  border: 3px solid #151522;
+  color: #151522;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+@media (max-width: 760px) {
+  .guide {
+    flex-direction: column;
+  }
+  .guide-rail {
+    flex-direction: row;
+    flex-wrap: wrap;
+    width: auto;
+  }
+  .guide-keys {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ---------------------------------------------------------------------------
+ * Touch: thumbstick on the left, action buttons on the right
+ * ------------------------------------------------------------------------- */
+.touch-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+.touch-zone {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 42%;
+  height: 62%;
+  pointer-events: auto;
+  touch-action: none;
+}
+.stick-base {
+  position: absolute;
+  left: 96px;
+  top: calc(100% - 110px);
+  width: 124px;
+  height: 124px;
+  margin: -62px 0 0 -62px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.04) 60%, rgba(0, 0, 0, 0.2));
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  box-shadow: 0 0 0 3px rgba(21, 21, 34, 0.45);
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}
+.stick-base.on {
+  opacity: 1;
+  transition: none;
+}
+.stick-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff, #cfd8ea 60%, #8f9bb5);
+  border: 3px solid #151522;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.4);
+}
+.touch-pad {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 250px;
+  height: 250px;
+  pointer-events: none;
+}
+.touch-btn {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 4px solid #151522;
+  pointer-events: auto;
+  touch-action: none;
+  box-shadow:
+    inset 0 -6px 0 rgba(0, 0, 0, 0.3),
+    0 4px 10px rgba(0, 0, 0, 0.35);
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-btn:active {
+  transform: scale(0.92);
+}
+.touch-attack {
+  right: 26px;
+  bottom: 30px;
+  width: 104px;
+  height: 104px;
+  background: radial-gradient(circle at 35% 30%, #ff8a7a, #e0202c 60%, #9e0f1f);
+}
+.touch-skill {
+  right: 138px;
+  bottom: 44px;
+  width: 70px;
+  height: 70px;
+  overflow: hidden;
+  background: radial-gradient(circle at 35% 30%, #c89aff, #7a2ae0 65%, #4a1486);
+}
+.touch-jump {
+  right: 48px;
+  bottom: 146px;
+  width: 64px;
+  height: 64px;
+  background: radial-gradient(circle at 35% 30%, #9fe0ff, #2f86ff 65%, #1a4ab8);
+}
+.touch-btn-label {
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+}
+.touch-cd {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+}
+/* Small phones: smaller thumb controls. */
+@media (max-height: 460px) {
+  .touch-attack {
+    width: 88px;
+    height: 88px;
+    right: 20px;
+    bottom: 22px;
+  }
+  .touch-skill {
+    right: 118px;
+    bottom: 30px;
+    width: 60px;
+    height: 60px;
+  }
+  .touch-jump {
+    right: 38px;
+    bottom: 122px;
+    width: 56px;
+    height: 56px;
+  }
+  .stick-base {
+    left: 80px;
+    top: calc(100% - 90px);
+  }
+}
+/* Room for thumbs: the stats move up to the top-left corner, the menu below
+   them, and the pick-up prompt above the buttons. No keyboard key caps. */
+.touch .hotkey-badge {
+  display: none;
+}
+.touch .hud-stats {
+  top: 10px;
+  bottom: auto;
+}
+.touch .hud-menu {
+  top: 33%;
+}
+.touch .e-prompt {
+  bottom: 300px;
+  right: 40px;
+}
+/* The icon buttons run along the top instead of down the side, clear of the
+   thumb buttons. */
+.touch .hud-right-col {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+  margin-top: 0;
+  padding-bottom: 18px;
+}
+/* The screen is the controller: no double-tap zoom or long-press menus. */
+.touch body,
+.touch #root {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+@media (orientation: portrait) {
+  .touch .touch-zone {
+    width: 55%;
+    height: 45%;
+  }
+}

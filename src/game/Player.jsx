@@ -1,5 +1,5 @@
 import { useFrame, useThree } from '@react-three/fiber'
-import { CapsuleCollider, RigidBody, useRapier } from '@react-three/rapier'
+import { CapsuleCollider, CoefficientCombineRule, RigidBody, useRapier } from '@react-three/rapier'
 import { memo, Suspense, useEffect, useMemo, useRef } from 'react'
 import { Quaternion, Vector3 } from 'three'
 
@@ -16,6 +16,7 @@ import { dropsInReach, PICKUP_RADIUS } from './loot'
 import { addAnchor, makeNameTag } from './labels'
 import PlayerAvatar from './PlayerAvatar'
 import WeaponModel from './entities/WeaponModel'
+import { surfaceAt } from './surface'
 import { ATTACK_REACH, findTarget } from './targeting'
 import { tierIndexFor } from './weaponTier'
 import useKeyboard, { isTyping } from './useKeyboard'
@@ -36,8 +37,9 @@ const GROUND_RAY_SLACK = 0.15
 const JUMP_COOLDOWN_S = 0.25
 /** Slightly slower than the server's limit so swings are never rejected. */
 const ATTACK_COOLDOWN_S = 0.46
-const SWING_TIME_S = 0.34
-const MOVE_SEND_INTERVAL_S = 1 / 12
+const SWING_TIME_S = 0.4
+/** Matches the server's 20 Hz patch rate: more often is wasted, less makes others' motion coarser. */
+const MOVE_SEND_INTERVAL_S = 1 / 20
 /** Clicks closer together than this chain into the next combo move. */
 const COMBO_WINDOW_S = 1.1
 /** Chop, sweep, uppercut, thrust: see poseWeaponArm in avatarRig.js. */
@@ -58,7 +60,9 @@ const LEAP_DEFAULT = 7
 /** Each connecting swing carries you a step into it. */
 const LUNGE_IMPULSE = 2.2
 /** How quickly the body reaches (or sheds) walking speed: high, but not instant. */
-const ACCEL = 16
+const ACCEL = 20
+/** How quickly the body turns to face where it's going (per second). */
+const TURN_RATE = 14
 /** Auto Fight re-picks its target this often, and picks up loot at most this often. */
 const AUTO_PICK_S = 0.2
 const AUTO_PICKUP_S = 0.4
@@ -74,8 +78,8 @@ const _input = new Vector3()
 const _move = new Vector3()
 const _camForward = new Vector3()
 const _camRight = new Vector3()
-const _rayOrigin = new Vector3()
 const _targetQuat = new Quaternion()
+const _shown = new Vector3()
 const _up = new Vector3(0, 1, 0)
 
 /**
@@ -193,6 +197,9 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     gateCooldown: 0,
     stepTimer: 0,
     wasGrounded: true,
+    airTime: 0,
+    /** Jump pressed on the touch controls. */
+    jumpQueued: false,
     promptCheck: 0,
     holdAt: null,
     holdFrames: 0,
@@ -280,17 +287,22 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     const onUiSkill = () => {
       st.current.skillQueued = true
     }
+    const onUiJump = () => {
+      st.current.jumpQueued = true
+    }
     el.addEventListener('pointerdown', onDown)
     el.addEventListener('pointerup', onUp)
     window.addEventListener('keydown', onKey)
     window.addEventListener('ltf:attack', onUiAttack)
     window.addEventListener('ltf:skill', onUiSkill)
+    window.addEventListener('ltf:jump', onUiJump)
     return () => {
       el.removeEventListener('pointerdown', onDown)
       el.removeEventListener('pointerup', onUp)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('ltf:attack', onUiAttack)
       window.removeEventListener('ltf:skill', onUiSkill)
+      window.removeEventListener('ltf:jump', onUiJump)
     }
   }, [gl])
 
@@ -317,10 +329,21 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     tag.setPfp(pfp || skinHeadshot(lookOrGuest(equipped).skinId))
   }, [tag, identity, isLoggedIn, equipped])
 
+  // One ray each, re-aimed per cast: the frame loop allocates none.
+  const rays = useMemo(
+    () => ({ probe: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: 0, z: 1 }), ground: new rapier.Ray({ x: 0, y: 0, z: 0 }, { x: 0, y: -1, z: 0 }) }),
+    [rapier],
+  )
+
   /** Does a short horizontal ray at height `y`, heading along `dir`, hit anything? */
   const probe = (pos, dir, y, reach) => {
-    _rayOrigin.set(pos.x, y, pos.z)
-    const ray = new rapier.Ray(_rayOrigin, { x: dir.x, y: 0, z: dir.z })
+    const ray = rays.probe
+    ray.origin.x = pos.x
+    ray.origin.y = y
+    ray.origin.z = pos.z
+    ray.dir.x = dir.x
+    ray.dir.y = 0
+    ray.dir.z = dir.z
     const hit = world.castRay(ray, CAPSULE_RADIUS + reach, true, undefined, undefined, undefined, bodyRef.current)
     return hit !== null
   }
@@ -329,8 +352,10 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     const body = bodyRef.current
     if (!body) return false
     const pos = body.translation()
-    _rayOrigin.set(pos.x, pos.y, pos.z)
-    const ray = new rapier.Ray(_rayOrigin, { x: 0, y: -1, z: 0 })
+    const ray = rays.ground
+    ray.origin.x = pos.x
+    ray.origin.y = pos.y
+    ray.origin.z = pos.z
     const maxDistance = CAPSULE_HALF_HEIGHT + CAPSULE_RADIUS + GROUND_RAY_SLACK
     const hit = world.castRay(ray, maxDistance, true, undefined, undefined, undefined, body)
     return hit !== null && hit.timeOfImpact <= maxDistance
@@ -358,7 +383,8 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     }
     send('attack', target ? { kind: target.kind, id: target.id, combo: s.combo } : { combo: s.combo })
     fx.emit('swing', { x: pos.x, y: pos.y, z: pos.z, ry: s.facing, weaponId, combo: s.combo })
-    sfx('swing')
+    // The spin and the uppercut are bigger, slower swings: a deeper whoosh.
+    sfx('swing', s.combo === SPIN_MOVE ? 1 : s.combo === 2 ? 0.5 : 0)
     return Boolean(target)
   }
 
@@ -498,6 +524,19 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
         .addScaledVector(_camRight, _input.x)
         .normalize()
       moving = true
+    } else if (!busy && local.stick.x * local.stick.x + local.stick.y * local.stick.y > 0.01) {
+      // The touch joystick: go where it points, relative to the view, at a pace
+      // set by how far it's pushed (all the way over breaks into a run).
+      const stick = local.stick
+      state.camera.getWorldDirection(_camForward)
+      _camForward.y = 0
+      _camForward.normalize()
+      _camRight.crossVectors(_camForward, _up).normalize()
+      _move.set(0, 0, 0).addScaledVector(_camForward, stick.y).addScaledVector(_camRight, stick.x)
+      const push = Math.min(1, _move.length())
+      _move.normalize()
+      speed = push > 0.92 ? MOVE_SPEED * SPRINT_MULTIPLIER : MOVE_SPEED * Math.max(0.4, push)
+      moving = true
     } else if (s.auto) {
       // Auto Fight walks over to its target (running when it's far) and stops in reach.
       const a = s.auto
@@ -539,11 +578,12 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
       if (moving && now - s.swingStart > SWING_TIME_S) s.facing = Math.atan2(_move.x, _move.z)
     }
 
-    if (k.jump && s.jumpCooldown === 0 && grounded) {
+    if ((k.jump || s.jumpQueued) && s.jumpCooldown === 0 && grounded && !busy) {
       body.applyImpulse({ x: 0, y: JUMP_IMPULSE, z: 0 }, true)
       s.jumpCooldown = JUMP_COOLDOWN_S
       sfx('jump')
     }
+    s.jumpQueued = false
 
     // --- Facing (with whirlwind spin) --------------------------------------------
     if (visualRef.current) {
@@ -551,7 +591,7 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
         visualRef.current.rotation.y += delta * 26
       } else {
         _targetQuat.setFromAxisAngle(_up, s.facing)
-        visualRef.current.quaternion.slerp(_targetQuat, 1 - Math.pow(0.0005, delta))
+        visualRef.current.quaternion.slerp(_targetQuat, 1 - Math.exp(-TURN_RATE * delta))
       }
     }
 
@@ -652,7 +692,12 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
 
     // --- Publish -----------------------------------------------------------------
     local.visual = visualRef.current
-    local.pos.set(pos.x, pos.y, pos.z)
+    // Publish where the body is drawn (interpolated between physics steps), so
+    // the name tag, shadows and effects move with it instead of stepping.
+    if (visualRef.current) {
+      visualRef.current.getWorldPosition(_shown)
+      local.pos.set(_shown.x, _shown.y + PLAYER_HEIGHT / 2, _shown.z)
+    } else local.pos.set(pos.x, pos.y, pos.z)
     local.ry = s.facing
     local.ready = true
 
@@ -662,7 +707,9 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     motion.time += delta
     motion.speed = horiz
     motion.grounded = grounded
-    motion.maxSpeed = speed
+    // Full stride at walking pace; a sprint quickens it (avatarRig). Not the
+    // current target speed: pressing Shift would shrink the stride mid-step.
+    motion.maxSpeed = MOVE_SPEED
     motion.armed = Boolean(weaponId)
     const swingT = ((now - s.swingStart) / SWING_TIME_S) * s.swingSpeed
     motion.attack = swingT > 0 && swingT < 1 ? swingT : 0
@@ -673,24 +720,39 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     motion.skillT = sk ? Math.min(1, (now - sk.at) / 0.6) : 1
     motion.leap = s.leap ? Math.min(1, (now - s.leap.start) / LEAP_TIME_S) : 0
 
-    // Footsteps and landing.
+    // Footsteps and landing, sounding like the ground underfoot.
     if (grounded && horiz > 1) {
       s.stepTimer -= delta * (horiz / MOVE_SPEED)
       if (s.stepTimer <= 0) {
         s.stepTimer = 0.32
-        sfx('step')
+        sfx('step', 1, surfaceAt(pos.x, pos.z))
       }
+    }
+    if (!grounded) s.airTime += delta
+    else {
+      if (!s.wasGrounded && s.airTime > 0.35) {
+        sfx('land', Math.min(1, s.airTime), surfaceAt(pos.x, pos.z))
+        s.stepTimer = 0.2
+      }
+      s.airTime = 0
     }
     s.wasGrounded = grounded
 
     s.sendTimer -= delta
     if (s.sendTimer <= 0 && getRoom()) {
-      s.sendTimer = MOVE_SEND_INTERVAL_S
+      // An even cadence: carry the remainder over, but never bank a backlog.
+      s.sendTimer = Math.max(s.sendTimer + MOVE_SEND_INTERVAL_S, MOVE_SEND_INTERVAL_S / 2)
       const anim = !grounded ? 2 : horiz > 0.5 ? 1 : 0
-      const msg = { x: +pos.x.toFixed(2), y: +pos.y.toFixed(2), z: +pos.z.toFixed(2), ry: +s.facing.toFixed(2), anim }
+      // Send where the body is drawn this frame, stamped with this frame's time.
+      // The raw physics position is up to a step off the frame time, and that
+      // error would show up in everyone else's view as uneven pace.
+      const at = local.pos
+      const msg = { x: +at.x.toFixed(2), y: +at.y.toFixed(2), z: +at.z.toFixed(2), ry: +s.facing.toFixed(2), anim }
       const key = `${msg.x}|${msg.y}|${msg.z}|${msg.ry}|${anim}`
       if (key !== s.lastSent) {
         s.lastSent = key
+        // +1 so a real stamp is never 0, which means "no clock" (old clients).
+        msg.mt = Math.round(now * 1000) + 1
         send('move', msg)
       }
     }
@@ -717,7 +779,10 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
       ccd
       name="player"
     >
-      <CapsuleCollider args={CAPSULE_ARGS} />
+      {/* Frictionless: the controller sets the walking speed itself. With friction
+          (0.5 by default on an explicit collider) the capsule dragged on the floor
+          every step and snagged on walls when brushing along them. */}
+      <CapsuleCollider args={CAPSULE_ARGS} friction={0} frictionCombineRule={CoefficientCombineRule.Min} />
       {/* Avatar origin is at the feet; the capsule origin is at its centre. */}
       <group ref={visualRef} position={[0, -PLAYER_HEIGHT / 2, 0]} rotation={[0, Math.PI, 0]}>
         {/* The avatar comes from Bloxity's CDN. Only it waits on the download (or

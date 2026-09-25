@@ -248,7 +248,7 @@ function bindMessages(r) {
   r.onMessage('died', ({ spawn }) => {
     sfx('death')
     useGame.setState({ deadAt: performance.now(), stage: 0 })
-    store().toast('Your loot is still waiting where you dropped it!', 'info')
+    store().toast('The dungeon has reset. Get stronger and try again!', 'info')
     local.teleport?.(spawn, Math.PI)
   })
 
@@ -288,6 +288,11 @@ export async function connect({ name, key, avatar, pfp }) {
     return false
   }
 
+  // Dev only: lets the test scripts read the room (who's alive, where) and the store.
+  if (import.meta.env.DEV) {
+    window.__room = room
+    window.__game = useGame
+  }
   bindMessages(room)
   // The full state arrives just after the join resolves; don't enter the world
   // until it has, or every entity lookup would hit an empty state.

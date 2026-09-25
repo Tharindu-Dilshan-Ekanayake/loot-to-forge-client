@@ -3,6 +3,7 @@ import { useEffect, useMemo, useRef } from 'react'
 import { CanvasTexture, SRGBColorSpace } from 'three'
 
 import { fx } from '../bus'
+import Merged from '../Merged'
 import { mat } from '../textures'
 import { Block, BlockyCharacter } from '../world/props'
 import WeaponModel from './WeaponModel'
@@ -41,6 +42,10 @@ const LOOKS = {
   skeleton: { skin: '#f0eee4', shirt: '#d8d4c6', pants: '#c8c4b4', face: 'skull', weapon: 'ronin_blade' },
   frost: { skin: '#bfe8ff', shirt: '#5f9fd6', pants: '#3b6f9a', face: 'glow', hat: 'crown', hatColor: '#9fe6ff', weapon: 'frost_splitter', glow: '#7fe3ff' },
   demon: { skin: '#b3261e', shirt: '#2a0505', pants: '#1a0202', face: 'glow', hat: 'horns', weapon: 'hellfire_reaper', glow: '#ff5a3b' },
+  void: { skin: '#3a2a6e', shirt: '#2a1d52', pants: '#1b1238', face: 'glow', hat: 'wizard', hatColor: '#2a1d52', weapon: 'voidwhisper', glow: '#c64dff' },
+  shadow: { skin: '#2a2440', shirt: '#1c1830', pants: '#120e20', face: 'glow', hat: 'spikes', hatColor: '#8a6aff', weapon: 'oni_slayer', glow: '#8a6aff' },
+  crystal: { skin: '#e8d6ff', shirt: '#6a4aa0', pants: '#3a2a6e', face: 'glow', hat: 'crown', hatColor: '#5ff0ff', weapon: 'amethyst_oath', glow: '#5ff0ff' },
+  celestial: { skin: '#fff3d0', shirt: '#ffe07a', pants: '#c3cbff', face: 'glow', hat: 'crown', hatColor: '#ffffff', weapon: 'celestial_verdict', glow: '#ffe07a' },
 }
 
 /** A training target. Swaying on hit is the whole AI. */
@@ -73,7 +78,7 @@ export function TrainingDummy({ dummy }) {
       <group position={[x, y, z]} rotation={[0, -Math.PI / 2, 0]} userData={NO_BATCH}>
         <Block size={[0.5, 1.6, 0.5]} base m="woodDark" tile={2} />
         <Block size={[1.8, 0.35, 1.8]} base m="woodDark" tile={2} />
-        <group ref={ref} position={[0, 1.4, 0]}>
+        <Merged ref={ref} position={[0, 1.4, 0]}>
           <Block size={[0.35, 1.8, 0.35]} base m="wood" tile={2} />
           <Block size={[2, 2, 0.5]} position={[0, 2.4, 0]} m="#f4efe2" />
           <mesh position={[0, 2.4, 0.26]} material={faceMat}>
@@ -82,7 +87,7 @@ export function TrainingDummy({ dummy }) {
           <mesh position={[0, 2.4, -0.26]} rotation={[0, Math.PI, 0]} material={faceMat}>
             <planeGeometry args={[1.9, 1.9]} />
           </mesh>
-        </group>
+        </Merged>
       </group>
     )
   }

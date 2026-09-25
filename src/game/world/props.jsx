@@ -1,9 +1,26 @@
 import { useFrame } from '@react-three/fiber'
 import { RigidBody } from '@react-three/rapier'
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
-import { AdditiveBlending, DoubleSide } from 'three'
+import { AdditiveBlending, DoubleSide, MeshBasicMaterial, MeshStandardMaterial } from 'three'
 
+import Merged from '../Merged'
 import { faceTexture, glowTexture, mat, signboardTexture, textTexture, worldBox } from '../textures'
+
+/** Face materials, one per face, skin and eye glow (shared, so faces can batch). */
+const faceMaterials = new Map()
+function faceMaterial(face, skin, glow) {
+  const key = `${face}|${skin}|${glow || ''}`
+  if (!faceMaterials.has(key)) {
+    const m = new MeshStandardMaterial({ map: faceTexture(face, skin, glow || undefined), roughness: 0.78 })
+    m.userData.cachedMat = true
+    faceMaterials.set(key, m)
+  }
+  return faceMaterials.get(key)
+}
+
+/** Lit window slits on the towers, shared so they all batch into one draw. */
+const WINDOW_MAT = new MeshBasicMaterial({ color: '#f4f6ff' })
+WINDOW_MAT.userData.cachedMat = true
 
 /**
  * A few millimetres of padding, different for every box size. Blocks that
@@ -92,12 +109,23 @@ export function Glow({ position, color = '#ffffff', size = 2, opacity = 0.8 }) {
   )
 }
 
+/** Beam materials, shared per colour and strength (additive, so beams can batch). */
+const beamMaterials = new Map()
+function beamMaterial(color, opacity) {
+  const key = `${color}|${opacity}`
+  if (!beamMaterials.has(key)) {
+    const m = new MeshBasicMaterial({ color, transparent: true, opacity, blending: AdditiveBlending, depthWrite: false, side: DoubleSide })
+    m.userData.cachedMat = true
+    beamMaterials.set(key, m)
+  }
+  return beamMaterials.get(key)
+}
+
 /** A vertical beam of light, like the ones marking ore nodes. */
 export function LightBeam({ position, color = '#ffffff', height = 8, radius = 0.35, opacity = 0.35 }) {
   return (
-    <mesh position={[position[0], position[1] + height / 2, position[2]]}>
+    <mesh position={[position[0], position[1] + height / 2, position[2]]} material={beamMaterial(color, opacity)}>
       <cylinderGeometry args={[radius * 0.6, radius, height, 12, 1, true]} />
-      <meshBasicMaterial color={color} transparent opacity={opacity} blending={AdditiveBlending} depthWrite={false} side={DoubleSide} />
     </mesh>
   )
 }
@@ -122,13 +150,13 @@ export function Cloud({ position, scale = 1, speed = 0.4 }) {
     if (ref.current.position.x > 220) ref.current.position.x = -220
   })
   return (
-    <group ref={ref} position={position} scale={scale}>
+    <Merged ref={ref} position={position} scale={scale}>
       {parts.map((part, i) => (
         <mesh key={i} position={part.p} material={mat('#ffffff', { roughness: 1, emissive: '#dfefff', emissiveIntensity: 0.35 })}>
           <boxGeometry args={part.s} />
         </mesh>
       ))}
-    </group>
+    </Merged>
   )
 }
 
@@ -153,7 +181,7 @@ export function Torch({ position, color = '#ff9a2e', light = false }) {
     <group position={position}>
       <Block size={[0.3, 2.2, 0.3]} base m="woodDark" tile={1} />
       <Block size={[0.6, 0.3, 0.6]} position={[0, 2.2, 0]} base m="stoneDark" tile={1} />
-      <group ref={flame} position={[0, 2.8, 0]}>
+      <Merged ref={flame} position={[0, 2.8, 0]} immutable>
         <mesh>
           <boxGeometry args={[0.4, 0.55, 0.4]} />
           <meshBasicMaterial color={color} />
@@ -162,7 +190,7 @@ export function Torch({ position, color = '#ff9a2e', light = false }) {
           <boxGeometry args={[0.22, 0.4, 0.22]} />
           <meshBasicMaterial color="#fff3a0" />
         </mesh>
-      </group>
+      </Merged>
       <Glow position={[0, 2.85, 0]} color={color} size={2.4} opacity={0.7} />
       {light && <pointLight position={[0, 3, 0]} color={color} intensity={8} distance={10} decay={2} />}
     </group>
@@ -196,19 +224,30 @@ export function Wall({ position, length, height = 10, thickness = 3, m = 'castle
   )
 }
 
-export function Tower({ position, radius = 5, height = 20, m = 'castle', flag = '#e0303c' }) {
-  const flagRef = useRef()
-  useFrame(({ clock }) => {
-    if (flagRef.current) flagRef.current.rotation.y = Math.sin(clock.elapsedTime * 1.4 + position[0]) * 0.25
-  })
-  const material = useMemo(() => {
+/**
+ * A tower's wall material: the texture tiled to its size. Shared between towers
+ * of the same size, so the world batches them into one draw.
+ */
+const towerMaterials = new Map()
+function towerMaterial(m, radius, height) {
+  const key = `${m}|${radius}|${height}`
+  if (!towerMaterials.has(key)) {
     const base = mat(m)
     const clone = base.clone()
     clone.map = base.map.clone()
     clone.map.repeat.set((radius * Math.PI * 2) / 4, height / 4)
     clone.map.needsUpdate = true
-    return clone
-  }, [m, radius, height])
+    towerMaterials.set(key, clone)
+  }
+  return towerMaterials.get(key)
+}
+
+export function Tower({ position, radius = 5, height = 20, m = 'castle', flag = '#e0303c' }) {
+  const flagRef = useRef()
+  useFrame(({ clock }) => {
+    if (flagRef.current) flagRef.current.rotation.y = Math.sin(clock.elapsedTime * 1.4 + position[0]) * 0.25
+  })
+  const material = useMemo(() => towerMaterial(m, radius, height), [m, radius, height])
   const merlons = 10
   return (
     <group position={position}>
@@ -231,16 +270,17 @@ export function Tower({ position, radius = 5, height = 20, m = 'castle', flag = 
           />
         )
       })}
-      {/* Window slits */}
+      {/* Window slits: one shared material, so every tower's batch together. */}
       {[0, Math.PI / 2, Math.PI, -Math.PI / 2].map((a, i) => (
-        <mesh key={i} position={[Math.sin(a) * (radius + 0.02), height * 0.62, Math.cos(a) * (radius + 0.02)]} rotation={[0, a, 0]}>
+        <mesh key={i} position={[Math.sin(a) * (radius + 0.02), height * 0.62, Math.cos(a) * (radius + 0.02)]} rotation={[0, a, 0]} material={WINDOW_MAT}>
           <planeGeometry args={[0.9, 2.6]} />
-          <meshBasicMaterial color="#f4f6ff" />
         </mesh>
       ))}
       <group ref={flagRef} position={[0, height + 1, 0]}>
-        <Block size={[0.3, 7, 0.3]} base m="#6b4a2b" />
-        <Block size={[3.2, 2, 0.15]} position={[1.7, 5.2, 0]} base m={flag} />
+        <Merged>
+          <Block size={[0.3, 7, 0.3]} base m="#6b4a2b" />
+          <Block size={[3.2, 2, 0.15]} position={[1.7, 5.2, 0]} base m={flag} />
+        </Merged>
       </group>
     </group>
   )
@@ -467,6 +507,49 @@ const HATS = {
       ))}
     </group>
   ),
+  /** A dark iron helm ringed with spikes. */
+  spikes: (c) => (
+    <group position={[0, 0.5, 0]}>
+      <Block size={[1.34, 0.6, 1.34]} m="#2a2d33" />
+      {[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const a = (i / 8) * Math.PI * 2
+        return (
+          <mesh key={i} position={[Math.sin(a) * 0.5, 0.55, Math.cos(a) * 0.5]} rotation={[Math.cos(a) * 0.35, 0, -Math.sin(a) * 0.35]} material={mat(c || '#9aa0a8', { metalness: 0.6, roughness: 0.35 })} castShadow>
+            <coneGeometry args={[0.1, 0.6, 5]} />
+          </mesh>
+        )
+      })}
+    </group>
+  ),
+  /** Great curling horns, swept back. */
+  demonhorns: (c) => (
+    <group position={[0, 0.55, 0]}>
+      {[-1, 1].map((s) => (
+        <group key={s} position={[s * 0.62, 0.1, 0]}>
+          <mesh position={[s * 0.2, 0.22, 0]} rotation={[0, 0, -s * 1.1]} material={mat(c || '#1b1b1b')} castShadow>
+            <coneGeometry args={[0.2, 0.7, 6]} />
+          </mesh>
+          <mesh position={[s * 0.52, 0.62, -0.1]} rotation={[-0.4, 0, -s * 0.2]} material={mat(c || '#1b1b1b')} castShadow>
+            <coneGeometry args={[0.13, 0.75, 6]} />
+          </mesh>
+        </group>
+      ))}
+    </group>
+  ),
+  /** The plague doctor's wide brim and long beaked mask. */
+  plague: (c) => (
+    <group position={[0, 0.6, 0]}>
+      <mesh material={mat(c || '#1b1b1b')} castShadow>
+        <cylinderGeometry args={[1.25, 1.25, 0.1, 16]} />
+      </mesh>
+      <mesh position={[0, 0.45, 0]} material={mat(c || '#1b1b1b')} castShadow>
+        <cylinderGeometry args={[0.6, 0.65, 0.8, 16]} />
+      </mesh>
+      <mesh position={[0, -0.75, 0.95]} rotation={[Math.PI / 2 - 0.25, 0, 0]} material={mat('#e8e0c8')} castShadow>
+        <coneGeometry args={[0.24, 0.9, 6]} />
+      </mesh>
+    </group>
+  ),
 }
 
 /**
@@ -494,10 +577,7 @@ export function BlockyCharacter({
   const legL = useRef()
   const legR = useRef()
   const torso = useRef()
-  const faceMat = useMemo(() => {
-    const t = faceTexture(face, skin)
-    return mat('#ffffff', { map: t })
-  }, [face, skin])
+  const faceMat = useMemo(() => faceMaterial(face, skin, emissive), [face, skin, emissive])
   const skinMat = emissive ? mat(skin, { emissive, emissiveIntensity: 0.25 }) : mat(skin)
 
   useFrame(({ clock }) => {
@@ -506,7 +586,10 @@ export function BlockyCharacter({
     const walk = p?.walk ?? 0
     const phase = p?.phase ?? t * 8
     const swing = Math.sin(phase) * 0.8 * walk
-    const idle = Math.sin(t * 1.8) * 0.05 * (1 - walk)
+    // Only characters something drives (enemies, dummies, stand-ins) sway at
+    // rest. Shopkeepers stand stock still, so the world batches them into its
+    // static draws instead of drawing each arm on its own every frame.
+    const idle = pose ? Math.sin(t * 1.8) * 0.05 * (1 - walk) : 0
     if (legL.current) legL.current.rotation.x = swing
     if (legR.current) legR.current.rotation.x = -swing
     if (armL.current) armL.current.rotation.x = -swing + idle
@@ -522,18 +605,23 @@ export function BlockyCharacter({
   return (
     <group scale={scale} {...rest}>
       <group ref={torso} position={[0, 3, 0]}>
-        {/* Torso */}
-        <Block size={[2, 2, 1]} m={shirt} tile={2} />
-        {/* Head */}
-        <group position={[0, 1.6, 0]}>
-          <mesh castShadow material={skinMat}>
-            <boxGeometry args={[1.2, 1.2, 1.2]} />
-          </mesh>
-          <mesh position={[0, 0, 0.605]} material={faceMat}>
-            <planeGeometry args={[1.18, 1.18]} />
-          </mesh>
-          {hat && HATS[hat]?.(hatColor)}
-        </group>
+        {/* Torso, head, hat and extras hold still relative to each other: drawn
+            merged, a few draws instead of one per box. */}
+        <Merged>
+          {/* Torso */}
+          <Block size={[2, 2, 1]} m={shirt} tile={2} />
+          {/* Head */}
+          <group position={[0, 1.6, 0]}>
+            <mesh castShadow material={skinMat}>
+              <boxGeometry args={[1.2, 1.2, 1.2]} />
+            </mesh>
+            <mesh position={[0, 0, 0.605]} material={faceMat}>
+              <planeGeometry args={[1.18, 1.18]} />
+            </mesh>
+            {hat && HATS[hat]?.(hatColor)}
+          </group>
+          {extra}
+        </Merged>
         {/* Arms pivot at the shoulder. */}
         <group ref={armL} position={[-1.5, 0.8, 0]}>
           <mesh castShadow position={[0, -0.8, 0]} material={skinMat}>
@@ -546,7 +634,6 @@ export function BlockyCharacter({
           </mesh>
           {held && <group position={[0, -1.7, 0.2]} rotation={[Math.PI / 2, 0, 0]}>{held}</group>}
         </group>
-        {extra}
       </group>
       {/* Legs pivot at the hip. */}
       <group ref={legL} position={[-0.5, 2, 0]}>

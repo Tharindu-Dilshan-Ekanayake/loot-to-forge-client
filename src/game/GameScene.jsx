@@ -7,6 +7,7 @@ import { NeutralToneMapping } from 'three'
 import { useBloxity } from '../bloxity/BloxityContext'
 import { getRoom } from '../net/network'
 import { useGame } from '../net/store'
+import { IS_TOUCH } from '../ui/device'
 import Atmosphere from './Atmosphere'
 import Effects from './Effects'
 import Enemy from './entities/Enemy'
@@ -15,6 +16,7 @@ import RemotePlayer from './entities/RemotePlayer'
 import FollowCamera from './FollowCamera'
 import { LabelProjector } from './labels'
 import Player from './Player'
+import VsyncClock from './VsyncClock'
 import LootDrops from './entities/LootDrops'
 import Dungeon from './world/Dungeon'
 import Hub from './world/Hub'
@@ -107,9 +109,10 @@ function Reflections() {
 
 /**
  * One fixed render resolution. Adapting it on the fly resized the canvas every
- * few seconds, and each resize was a visible hitch mid-walk.
+ * few seconds, and each resize was a visible hitch mid-walk. Phones (dense
+ * screens, small GPUs) get a little less.
  */
-const DPR = Math.min(1.5, window.devicePixelRatio || 1)
+const DPR = Math.min(IS_TOUCH ? 1.25 : 1.5, window.devicePixelRatio || 1)
 
 export function GameScene() {
   const { game } = useBloxity()
@@ -143,6 +146,7 @@ export function GameScene() {
         gl.toneMappingExposure = 1
       }}
     >
+      <VsyncClock />
       <Atmosphere />
       <Suspense fallback={null}>
         <Reflections />
@@ -168,8 +172,10 @@ export function GameScene() {
         </>
       )}
       <Effects />
-      <LabelProjector />
       <FollowCamera bodyRef={playerBodyRef} />
+      {/* After the camera, so name tags are placed with this frame's view and
+          don't trail a frame behind (a visible wobble while walking). */}
+      <LabelProjector />
       <Prewarm onDone={handleFirstFrame} />
     </Canvas>
   )

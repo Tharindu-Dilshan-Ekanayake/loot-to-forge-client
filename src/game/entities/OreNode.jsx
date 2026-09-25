@@ -7,6 +7,7 @@ import { useGame } from '../../net/store'
 import { formatNum, ORES, rarityOf } from '../../shared/gameData'
 import { fx } from '../bus'
 import { addAnchor, h, makeHealthPlate } from '../labels'
+import Merged from '../Merged'
 import { pauseMatrices, stageShown } from '../stageWindow'
 import { mat } from '../textures'
 import { Glow, LightBeam } from '../world/props'
@@ -150,7 +151,8 @@ export function OreNode({ id }) {
         <dodecahedronGeometry args={[0.8, 0]} />
       </mesh>
       <group ref={crystals} scale={1}>
-        <group position={[0, 0.45 * size, 0]}>
+        {/* The cluster (and below, the cage) drawn merged: a few draws per node, not sixteen. */}
+        <Merged position={[0, 0.45 * size, 0]}>
           {CRYSTALS.map(([x, z, hgt, tilt], i) => (
             <mesh
               key={i}
@@ -163,14 +165,16 @@ export function OreNode({ id }) {
               <octahedronGeometry args={[0.26 * size, 0]} />
             </mesh>
           ))}
-        </group>
+        </Merged>
         {/* Toggled, never remounted: unlocking a stage mustn't build anything. */}
         <group visible={!locked}>
           <LightBeam position={[0, 0.6, 0]} color={m.beam} height={isEvent ? 26 : 7} radius={isEvent ? 1.3 : 0.28} opacity={isEvent ? 0.3 : 0.28} />
         </group>
         {(isEvent || type !== 'stone') && <Glow position={[0, 1 * size, 0]} color={ore.color} size={isEvent ? 12 : 2.2} opacity={isEvent ? 0.7 : 0.35} />}
         <group visible={locked} scale={isEvent ? 2.2 : 1}>
-          <Cage />
+          <Merged>
+            <Cage />
+          </Merged>
         </group>
       </group>
     </group>

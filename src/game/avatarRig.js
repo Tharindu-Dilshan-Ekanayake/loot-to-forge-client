@@ -105,6 +105,8 @@ export function collectRig(root) {
       entry.axisX = new Vector3(1, 0, 0).applyQuaternion(relInv).normalize()
       /** Local axis to rotate about for lateral sway. */
       entry.axisZ = new Vector3(0, 0, 1).applyQuaternion(relInv).normalize()
+      /** Local axis to rotate about for a twist round the vertical. */
+      entry.axisY = new Vector3(0, 1, 0).applyQuaternion(relInv).normalize()
       /** Maps a character-space orientation into this bone's local frame. */
       entry.relInv = relInv
     }
@@ -363,12 +365,16 @@ function rotateBone(rig, name, which, angle) {
 }
 
 /** How far each leg angles out to the side when standing still (radians). */
-const STANCE_SPLAY = 0.17
+const STANCE_SPLAY = 0.04
+/** The idle stance fades out over this much of full stride as you speed up. */
+const IDLE_BLEND = 0.25
 
 /** Swing a limb forward/back - the plane a walk cycle actually moves in. */
 const swing = (rig, name, angle) => rotateBone(rig, name, 'axisX', angle)
 /** Sway a limb out to the side. */
 const sway = (rig, name, angle) => rotateBone(rig, name, 'axisZ', angle)
+/** Twist about the vertical (the spine turning into a swing). */
+const twist = (rig, name, angle) => rotateBone(rig, name, 'axisY', angle)
 
 /**
  * Poses the rig for the current motion state.
@@ -382,7 +388,17 @@ export function animateRig(rig, motion) {
   if (!rig?.skeleton || !motion) return
 
   const { time = 0, speed = 0, grounded = true, maxSpeed = 6 } = motion
-  const ratio = Math.min(speed / Math.max(maxSpeed, 0.001), 1)
+  const pace = speed / Math.max(maxSpeed, 0.001)
+  const ratio = Math.min(pace, 1)
+
+  // The stride's phase is advanced by each frame's step rather than computed as
+  // time * rate: with a long-running clock, any change in rate (setting off,
+  // stopping, sprinting, even tiny speed wobbles) would jump the phase by
+  // hundreds of radians and flick the legs to a random pose every frame.
+  const dt = Math.min(0.1, Math.max(0, time - (rig.animTime ?? time)))
+  rig.animTime = time
+  // Step frequency rises with speed (up to a sprint) so a run doesn't look like a moonwalk.
+  rig.stridePhase = ((rig.stridePhase ?? 0) + dt * (6.5 + Math.min(pace, 1.6) * 4)) % (Math.PI * 2)
 
   rig.root.position.y = rig.rootRestY
 
@@ -437,42 +453,51 @@ export function animateRig(rig, motion) {
   }
 
   // --- Standing still: a slow breathing sway --------------------------------
-  if (ratio < 0.04) {
-    const idle = Math.sin(time * 1.6)
-    sway(rig, 'LegL1', -STANCE_SPLAY)
-    sway(rig, 'LegR1', STANCE_SPLAY)
-    sway(rig, 'ArmL1', -0.07 - idle * 0.03)
-    sway(rig, 'ArmR1', 0.07 + idle * 0.03)
-    swing(rig, 'Spine1', idle * 0.02)
+  // Faded out as the walk fades in, so setting off and stopping blend instead
+  // of snapping between two poses.
+  const still = Math.max(0, 1 - ratio / IDLE_BLEND)
+  const idle = Math.sin(time * 1.6)
+  if (still > 0) {
+    // Standing normally, feet under the hips, breathing.
+    sway(rig, 'LegL1', -STANCE_SPLAY * still)
+    sway(rig, 'LegR1', STANCE_SPLAY * still)
+    sway(rig, 'ArmL1', (-0.07 - idle * 0.03) * still)
+    if (!motion.armed) sway(rig, 'ArmR1', (0.07 + idle * 0.03) * still)
+    swing(rig, 'Spine1', idle * 0.02 * still)
+  }
+  if (ratio < 0.01) {
     rig.root.position.y = rig.rootRestY + idle * 0.03
     return
   }
 
   // --- Walk / run cycle -----------------------------------------------------
-  // Step frequency rises with speed so a sprint doesn't look like a moonwalk.
   // Kept upright and even: a clean stride with the legs in full view, rather than
   // a crouched, leaning scurry.
-  const phase = time * (6 + ratio * 4)
+  const phase = rig.stridePhase
   const cycle = Math.sin(phase)
-  const legAmp = 0.7 * ratio
-  const armAmp = 0.6 * ratio
+  const legAmp = 0.95 * ratio
+  const armAmp = 0.85 * ratio
 
-  // Legs swing in opposition; the knee folds a little as each foot comes through.
+  // Legs swing in opposition; the knee folds as each foot comes through.
   swing(rig, 'LegL1', cycle * legAmp)
   swing(rig, 'LegR1', -cycle * legAmp)
-  swing(rig, 'LegL2', Math.max(0, -cycle) * 0.55 * ratio)
-  swing(rig, 'LegR2', Math.max(0, cycle) * 0.55 * ratio)
+  swing(rig, 'LegL2', Math.max(0, -cycle) * 1.0 * ratio)
+  swing(rig, 'LegR2', Math.max(0, cycle) * 1.0 * ratio)
 
-  // Arms counter-swing against the legs. The sword arm swings less while armed.
-  const armed = motion.armed ? 0.35 : 1
+  // The free arm counter-swings; the sword arm keeps the blade on its shoulder
+  // (see poseWeaponArm) and only rocks with the step.
   swing(rig, 'ArmL1', -cycle * armAmp)
-  swing(rig, 'ArmR1', cycle * armAmp * armed)
-  swing(rig, 'ArmL2', Math.max(0, cycle) * 0.5 * ratio)
-  swing(rig, 'ArmR2', Math.max(0, -cycle) * 0.5 * ratio * armed)
+  swing(rig, 'ArmL2', -Math.max(0, cycle) * 0.6 * ratio)
+  if (motion.armed) swing(rig, 'ArmR1', cycle * 0.08 * ratio)
+  else {
+    swing(rig, 'ArmR1', cycle * armAmp)
+    swing(rig, 'ArmR2', -Math.max(0, -cycle) * 0.6 * ratio)
+  }
 
-  // Barely any lean, and a light bob once per step (twice per full cycle).
-  swing(rig, 'Spine1', -0.04 * ratio)
-  rig.root.position.y = rig.rootRestY + Math.abs(Math.cos(phase)) * 0.07 * ratio
+  // A little lean into the stride, and a bob once per step.
+  swing(rig, 'Spine1', -0.1 * ratio)
+  sway(rig, 'Spine1', cycle * 0.05 * ratio)
+  rig.root.position.y = rig.rootRestY + idle * 0.03 * still + Math.abs(Math.cos(phase)) * 0.14 * ratio
 }
 
 /**
@@ -505,50 +530,51 @@ function poseWeaponArm(rig, motion) {
   }
 
   if (attack > 0 && attack < 1) {
-    // Every move winds up over 0–0.35 and strikes through 0.35–1.
-    const windup = Math.min(attack / 0.35, 1)
-    const strike = easeOut(Math.max(0, (attack - 0.35) / 0.65))
-    switch (motion.combo || 0) {
-      case 1:
-        // Sweep: arm out to the side, then across the body.
-        swing(rig, 'ArmR1', -1.35)
-        sway(rig, 'ArmR1', 1.7 * windup - 2.6 * strike)
-        swing(rig, 'ArmR2', -0.25)
-        sway(rig, 'Spine1', 0.3 * windup - 0.5 * strike)
-        break
-      case 2:
-        // Uppercut: blade low and back, then ripped up overhead.
-        swing(rig, 'ArmR1', 0.7 * windup - 3.2 * strike)
-        swing(rig, 'ArmR2', -0.5 * (1 - strike))
-        swing(rig, 'Spine1', 0.2 * windup - 0.25 * strike)
-        break
-      case 4:
-        // Spin slash: blade held straight out while the whole body turns a full circle.
-        swing(rig, 'ArmR1', -1.45)
-        sway(rig, 'ArmR1', 1.25)
-        swing(rig, 'ArmR2', -0.1)
-        break
-      case 3:
-        // Thrust: pull back, then lunge forward with the arm straight.
-        swing(rig, 'ArmR1', 0.4 * windup - 1.95 * strike)
-        swing(rig, 'ArmR2', -1.1 * windup * (1 - strike))
-        swing(rig, 'Spine1', 0.1 * windup - 0.4 * strike)
-        break
-      default:
-        // Chop: over the head and down through.
-        swing(rig, 'ArmR1', -2.9 * windup + 2.9 * strike)
-        swing(rig, 'ArmR2', -0.35 * (1 - strike))
-        swing(rig, 'Spine1', 0.3 * strike - 0.12 * windup)
+    if ((motion.combo || 0) === 4) {
+      // Spin slash: blade held straight out while the whole body turns a full circle.
+      swing(rig, 'ArmR1', -1.5)
+      sway(rig, 'ArmR1', 1.3)
+      swing(rig, 'ArmR2', -0.1)
+      return
     }
+    // A flat, circular sweep: the blade comes off the shoulder out to one side,
+    // arm straight and level, and scythes round in front of you to the other
+    // side, the body turning with it; then it settles back onto the shoulder.
+    // Alternate clicks sweep in opposite directions.
+    const dir = (motion.combo || 0) % 2 === 0 ? 1 : -1
+    const wind = easeOut(Math.min(1, attack / 0.22))
+    const strike = easeOut(Math.min(1, Math.max(0, (attack - 0.22) / 0.55)))
+    const settle = smooth(Math.min(1, Math.max(0, (attack - 0.8) / 0.2)))
+    const from = dir > 0 ? 1.9 : -1.5
+    const to = dir > 0 ? -1.5 : 1.9
+    const armOut = from + (to - from) * strike
+    const blend = (sweepV, carryV) => sweepV + (carryV - sweepV) * settle
+    // Wind-up lifts it off the shoulder into the level sweep.
+    const lift = (a, b) => a + (b - a) * wind
+    swing(rig, 'ArmR1', blend(lift(CARRY_POSE.shoulder, -1.5), CARRY_POSE.shoulder))
+    sway(rig, 'ArmR1', blend(lift(CARRY_POSE.out, armOut), CARRY_POSE.out))
+    swing(rig, 'ArmR2', blend(lift(CARRY_POSE.elbow, -0.12), CARRY_POSE.elbow))
+    twist(rig, 'Spine1', dir * (0.45 * wind - 0.95 * strike) * (1 - settle))
+    swing(rig, 'ArmL1', -0.4 * wind * (1 - settle))
     return
   }
 
   if (armed) {
-    swing(rig, 'ArmR1', READY_POSE.shoulder)
-    sway(rig, 'ArmR1', READY_POSE.out)
-    swing(rig, 'ArmR2', READY_POSE.elbow)
+    // The blade rests on the shoulder, standing or on the move.
+    swing(rig, 'ArmR1', CARRY_POSE.shoulder)
+    sway(rig, 'ArmR1', CARRY_POSE.out)
+    swing(rig, 'ArmR2', CARRY_POSE.elbow)
   }
 }
+
+/**
+ * Carrying the blade on the shoulder: hand up in front of the shoulder, elbow
+ * folded, so the blade leans back over the sword-side shoulder. Solved against
+ * the grip PlayerAvatar aims for READY_POSE.
+ */
+const CARRY_POSE = { shoulder: -0.1, out: 0.45, elbow: -2.55 }
+
+const smooth = (t) => t * t * (3 - 2 * t)
 
 /**
  * Relaxed sword-arm stance: hanging by the hip, a little forward and out, so the
