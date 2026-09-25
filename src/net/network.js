@@ -10,8 +10,27 @@ export const SERVER_URL =
 
 export const ROOM_NAME = 'forge'
 
+/**
+ * Hosted on Bloxity Legion, players come in through its matchmaker, which picks
+ * (or boots) a server pod and relays the socket to it. Set both in the build's
+ * env; without them the client talks straight to SERVER_URL (local dev).
+ */
+const MATCHMAKER_URL = import.meta.env.VITE_MATCHMAKER_URL || ''
+const GAME_ID = import.meta.env.VITE_GAME_ID || ''
+
 let client = null
 let room = null
+
+/** A Colyseus client for this join: via the matchmaker when hosted, else direct. */
+async function makeClient() {
+  if (!MATCHMAKER_URL || !GAME_ID) return client || (client = new Client(SERVER_URL))
+  const res = await fetch(`${MATCHMAKER_URL}/v1/play/${GAME_ID}`, { method: 'POST' })
+  if (!res.ok) throw new Error(`matchmaker answered ${res.status}`)
+  const { roomId } = await res.json()
+  if (!roomId) throw new Error('matchmaker gave no server')
+  // Each join gets its own relay URL: a fresh client, pinned to that pod.
+  return new Client(`${MATCHMAKER_URL.replace(/^http/, 'ws')}/v1/ws/${roomId}`)
+}
 
 export const getRoom = () => room
 
@@ -253,16 +272,18 @@ function bindMessages(r) {
 export async function connect({ name, key, avatar, pfp }) {
   useGame.setState({ screen: 'connecting', connError: '' })
   try {
-    client = client || new Client(SERVER_URL)
+    const c = await makeClient()
     const options = { name, key, avatar, pfp }
-    room = await client.joinOrCreate(ROOM_NAME, options)
+    room = await c.joinOrCreate(ROOM_NAME, options)
   } catch (err) {
     console.error('[net] join failed', err)
     room = null
     useGame.setState({
       screen: 'title',
       entered: false,
-      connError: `Could not join the server (${err?.message || err}). Is it running on ${SERVER_URL}?`,
+      connError: MATCHMAKER_URL
+        ? `Could not join a server (${err?.message || err}). Please try again.`
+        : `Could not join the server (${err?.message || err}). Is it running on ${SERVER_URL}?`,
     })
     return false
   }

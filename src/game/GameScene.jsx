@@ -1,7 +1,7 @@
-import { Environment, Lightformer, PerformanceMonitor } from '@react-three/drei'
+import { Environment, Lightformer } from '@react-three/drei'
 import { Canvas, useFrame } from '@react-three/fiber'
 import { Physics } from '@react-three/rapier'
-import { Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { Suspense, useCallback, useEffect, useRef } from 'react'
 import { NeutralToneMapping } from 'three'
 
 import { useBloxity } from '../bloxity/BloxityContext'
@@ -105,6 +105,12 @@ function Reflections() {
   )
 }
 
+/**
+ * One fixed render resolution. Adapting it on the fly resized the canvas every
+ * few seconds, and each resize was a visible hitch mid-walk.
+ */
+const DPR = Math.min(1.5, window.devicePixelRatio || 1)
+
 export function GameScene() {
   const { game } = useBloxity()
   const playerBodyRef = useRef(null)
@@ -112,10 +118,6 @@ export function GameScene() {
   const shadows = useGame((s) => s.settings.shadows)
   const loadingEnded = useRef(false)
   const playing = screen === 'playing'
-  // Resolution adapts to the machine: drop it when frames slip, raise it back
-  // when there's headroom, so the game stays smooth rather than sharp-but-choppy.
-  const maxDpr = Math.min(1.75, window.devicePixelRatio || 1)
-  const [dpr, setDpr] = useState(() => Math.min(1.5, maxDpr))
 
   const handleFirstFrame = useCallback(() => {
     if (loadingEnded.current) return
@@ -131,7 +133,7 @@ export function GameScene() {
   return (
     <Canvas
       shadows={shadows ? 'soft' : false}
-      dpr={dpr}
+      dpr={DPR}
       camera={{ position: [40, 26, 40], fov: 62, near: 0.3, far: 900 }}
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onCreated={({ gl, scene }) => {
@@ -141,12 +143,6 @@ export function GameScene() {
         gl.toneMappingExposure = 1
       }}
     >
-      <PerformanceMonitor
-        flipflops={4}
-        onIncline={() => setDpr((d) => Math.min(maxDpr, d + 0.25))}
-        onDecline={() => setDpr((d) => Math.max(1, d - 0.25))}
-        onFallback={() => setDpr(1)}
-      />
       <Atmosphere />
       <Suspense fallback={null}>
         <Reflections />

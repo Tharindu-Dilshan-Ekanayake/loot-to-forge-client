@@ -250,6 +250,9 @@ export function Tower({ position, radius = 5, height = 20, m = 'castle', flag = 
  * Market stall
  * ------------------------------------------------------------------------- */
 
+/** Height of a stall's counter, not counting its top plank. */
+export const STALL_COUNTER_H = 1.2
+
 /** Wooden counter with a striped awning. Faces +Z (the customer side). */
 export function Stall({ position, rotation = 0, stripes = ['#e0303c', '#ffffff'], width = 8, mat: matColor, children }) {
   const n = 8
@@ -263,8 +266,9 @@ export function Stall({ position, rotation = 0, stripes = ['#e0303c', '#ffffff']
         </>
       )}
       <Solid>
-        <Block size={[width, 1.8, 2]} position={[0, 0, 1.5]} base m="wood" tile={2} />
-        <Block size={[width + 0.4, 0.3, 2.4]} position={[0, 1.8, 1.5]} base m="woodDark" tile={2} />
+        {/* A low counter, so the shopkeeper behind it stays in view. */}
+        <Block size={[width, STALL_COUNTER_H, 2]} position={[0, 0, 1.5]} base m="wood" tile={2} />
+        <Block size={[width + 0.4, 0.3, 2.4]} position={[0, STALL_COUNTER_H, 1.5]} base m="woodDark" tile={2} />
         <Block size={[width, 5, 0.6]} position={[0, 0, -2.2]} base m="wood" tile={2} />
         {[-1, 1].map((s) => (
           <Block key={s} size={[0.6, 6, 0.6]} position={[s * (width / 2 - 0.3), 0, 2.4]} base m="woodDark" tile={2} />

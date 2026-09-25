@@ -356,7 +356,7 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
       s.facing = Math.atan2(target.x - pos.x, target.z - pos.z)
       if (!forced && isGrounded()) bodyRef.current?.applyImpulse({ x: Math.sin(s.facing) * LUNGE_IMPULSE, y: 0, z: Math.cos(s.facing) * LUNGE_IMPULSE }, true)
     }
-    send('attack', target ? { kind: target.kind, id: target.id } : {})
+    send('attack', target ? { kind: target.kind, id: target.id, combo: s.combo } : { combo: s.combo })
     fx.emit('swing', { x: pos.x, y: pos.y, z: pos.z, ry: s.facing, weaponId, combo: s.combo })
     sfx('swing')
     return Boolean(target)
@@ -392,6 +392,7 @@ export const Player = memo(function Player({ onAvatarReady, bodyRef: externalBod
     s.facing = Math.atan2(dirX, dirZ)
     useGame.setState({ skillCd: { until: performance.now() + skill.cooldown * 1000, total: skill.cooldown } })
     s.leap = { key: skill.key, start: now, dirX, dirZ, dist }
+    send('leap', {})
     fx.emit('leapStart', { x: pos.x, y: pos.y, z: pos.z })
     sfx('dash')
   }

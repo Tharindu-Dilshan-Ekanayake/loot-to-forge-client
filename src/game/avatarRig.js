@@ -419,21 +419,20 @@ export function animateRig(rig, motion) {
     return
   }
 
-  // --- Standing still, armed: a ready stance --------------------------------
-  // Upright with the feet planted apart, one to each side; the free fist up as a
-  // guard and the blade held out in front, breathing as it waits.
-  if (ratio < 0.04 && motion.armed && !(motion.attack > 0 && motion.attack < 1)) {
-    const idle = Math.sin(time * 2.2)
-    sway(rig, 'LegL1', -STANCE_SPLAY)
-    sway(rig, 'LegR1', STANCE_SPLAY)
-    swing(rig, 'Spine1', -0.04 + idle * 0.02)
-    if (!motion.skill || motion.skillT >= 1) {
-      swing(rig, 'ArmL1', -0.95 + idle * 0.05)
-      sway(rig, 'ArmL1', -0.3)
-      swing(rig, 'ArmL2', -1.05)
-      swing(rig, 'ArmR1', idle * 0.05)
-    }
-    rig.root.position.y = rig.rootRestY - 0.03 + idle * 0.02
+  // --- A strike on the ground: step in onto a bent front knee --------------
+  // The left foot plants forward with the knee bent, the back leg stretches out
+  // behind and the body drops and leans into the blow, then rises back up.
+  const attack = motion.attack || 0
+  if (grounded && attack > 0 && attack < 1 && (motion.combo || 0) !== 4) {
+    const lunge = Math.sin(Math.min(1, attack / 0.35) * (Math.PI / 2)) * (attack > 0.75 ? (1 - attack) / 0.25 : 1)
+    const walk = ratio * 0.4
+    swing(rig, 'LegL1', -0.85 * lunge + Math.sin(time * 10) * walk)
+    swing(rig, 'LegL2', 1.0 * lunge)
+    swing(rig, 'LegR1', 0.55 * lunge - Math.sin(time * 10) * walk)
+    swing(rig, 'LegR2', 0.25 * lunge)
+    swing(rig, 'Spine1', -0.22 * lunge)
+    swing(rig, 'ArmL1', 0.5 * lunge)
+    rig.root.position.y = rig.rootRestY - 0.22 * lunge
     return
   }
 
@@ -465,7 +464,7 @@ export function animateRig(rig, motion) {
   swing(rig, 'LegR2', Math.max(0, cycle) * 0.55 * ratio)
 
   // Arms counter-swing against the legs. The sword arm swings less while armed.
-  const armed = motion.armed ? 0.25 : 1
+  const armed = motion.armed ? 0.35 : 1
   swing(rig, 'ArmL1', -cycle * armAmp)
   swing(rig, 'ArmR1', cycle * armAmp * armed)
   swing(rig, 'ArmL2', Math.max(0, cycle) * 0.5 * ratio)
@@ -552,10 +551,9 @@ function poseWeaponArm(rig, motion) {
 }
 
 /**
- * Guard stance for the sword arm: raised in front with the elbow bent, so the
- * held blade points up and forward, ready to strike. PlayerAvatar aims the grip
- * against this pose.
+ * Relaxed sword-arm stance: hanging by the hip, a little forward and out, so the
+ * held blade juts out to the side. PlayerAvatar aims the grip against this pose.
  */
-export const READY_POSE = { shoulder: -0.85, out: 0.22, elbow: -0.75 }
+export const READY_POSE = { shoulder: -0.3, out: 0.16, elbow: -0.3 }
 
 const easeOut = (t) => 1 - (1 - t) * (1 - t)

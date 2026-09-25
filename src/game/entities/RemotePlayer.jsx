@@ -50,9 +50,22 @@ export function RemotePlayer({ id }) {
     const p = getRoom()?.state.players.get(id)
     return { weapon: p?.weapon || '', avatar: p?.avatar || '', bag: p?.bag || '', tier: tierIndexFor(p?.damage), pfp: p?.pfp || '', name: p?.name || '' }
   })
-  const motionRef = useRef({ time: 0, speed: 0, grounded: true, maxSpeed: 7, armed: true, attack: 0, skill: null, skillT: 1 })
+  const motionRef = useRef({ time: 0, speed: 0, grounded: true, maxSpeed: 7, armed: true, attack: 0, skill: null, skillT: 1, leap: 0 })
   const blockyPose = useRef({ walk: 0, attack: 0 })
-  const anim = useRef({ lastAtk: -1, lastSkill: -1, swingAt: -10, skillAt: -10, spinUntil: 0, init: false, speed: 0, stepTimer: 0 })
+  const anim = useRef({
+    lastAtk: -1,
+    lastSkill: -1,
+    lastLeap: -1,
+    swingAt: -10,
+    swingSpeed: 1,
+    skillAt: -10,
+    skillKey: null,
+    leapAt: -10,
+    spinUntil: 0,
+    init: false,
+    speed: 0,
+    stepTimer: 0,
+  })
   /** Recent server positions: [{ t, x, y, z }], oldest first. */
   const samples = useRef([])
 
@@ -131,6 +144,10 @@ export function RemotePlayer({ id }) {
     const wantSpeed = p.anim === 1 ? Math.min(segSpeed, 11) : 0
     a.speed += (wantSpeed - a.speed) * (1 - Math.exp(-10 * delta))
 
+    if (a.spinPending) {
+      a.spinPending = false
+      a.spinUntil = now + 0.77
+    }
     if (now < a.spinUntil) {
       if (inner.current) inner.current.rotation.y += delta * 19
     } else {
@@ -138,23 +155,46 @@ export function RemotePlayer({ id }) {
       inner.current?.quaternion.slerp(_q, 1 - Math.pow(0.001, delta))
     }
 
-    if (a.lastAtk !== p.atk) {
-      const combo = p.atk % 5
-      if (a.lastAtk !== -1) {
+    // A counter the server hasn't set yet reads as 0.
+    const atkNow = p.atk | 0
+    const skillNow = p.skill | 0
+    const leapNow = p.leap | 0
+    if (a.lastLeap !== leapNow) {
+      // Their Q take-off: blade up, arcing through the air (the arc itself comes
+      // from their position updates).
+      if (a.lastLeap !== -1) {
+        a.leapAt = now
+        if (local.pos.distanceTo(g.position) < 45) fx.emit('leapStart', { x: g.position.x, y: g.position.y + HEIGHT / 2, z: g.position.z })
+      }
+      a.lastLeap = leapNow
+    }
+    if (a.lastAtk !== atkNow) {
+      // The same move of the combo they played.
+      const combo = (p.combo | 0) % 5
+      const seen = a.lastAtk !== -1
+      if (seen) {
         a.swingAt = now
+        a.swingSpeed = 1
         // Their slash shows for everyone nearby, the same arc they see.
         if (local.pos.distanceTo(g.position) < 45) {
           fx.emit('swing', { x: g.position.x, y: g.position.y + HEIGHT / 2, z: g.position.z, ry: p.ry, weaponId: p.weapon, combo })
         }
       }
-      a.lastAtk = p.atk
+      a.lastAtk = atkNow
       // Close enough to their real combo: cycle through the five moves.
       motionRef.current.combo = combo
-      if (combo === 4 && a.lastAtk !== -1) a.spinUntil = now + 0.34
+      if (combo === 4 && seen) a.spinUntil = now + 0.34
     }
-    if (a.lastSkill !== p.skill) {
-      if (a.lastSkill !== -1) a.skillAt = now
-      a.lastSkill = p.skill
+    if (a.lastSkill !== skillNow) {
+      if (a.lastSkill !== -1) {
+        // The landing: the chop comes down, then the weapon's skill pose, as they saw it.
+        a.leapAt = -10
+        a.swingAt = now - 0.34 * 0.35
+        a.swingSpeed = 1.3
+        motionRef.current.combo = 0
+        a.skillAt = now + 0.22
+      }
+      a.lastSkill = skillNow
     }
 
     const m = motionRef.current
@@ -162,9 +202,12 @@ export function RemotePlayer({ id }) {
     m.speed = a.speed < 0.3 ? 0 : a.speed
     m.grounded = p.anim !== 2
     m.armed = Boolean(p.weapon)
-    const swingT = (now - a.swingAt) / 0.34
+    const swingT = ((now - a.swingAt) / 0.34) * a.swingSpeed
     m.attack = swingT > 0 && swingT < 1 ? swingT : 0
-    m.skillT = Math.min(1, (now - a.skillAt) / 0.6)
+    m.skill = now >= a.skillAt ? a.skillKey : null
+    m.skillT = now >= a.skillAt ? Math.min(1, (now - a.skillAt) / 0.6) : 1
+    const leapT = (now - a.leapAt) / 0.5
+    m.leap = leapT > 0 && leapT < 1 ? leapT : 0
 
     blockyPose.current.walk = Math.min(1, m.speed / 7)
 
@@ -184,7 +227,10 @@ export function RemotePlayer({ id }) {
   useEffect(
     () =>
       fx.on((type, data) => {
-        if (type === 'skill' && data.by === id) motionRef.current.skill = data.key
+        if (type !== 'skill' || data.by !== id) return
+        anim.current.skillKey = data.key
+        // Whirlwind spins them round, as it does for the caster.
+        if (data.key === 'whirlwind') anim.current.spinPending = true
       }),
     [id],
   )

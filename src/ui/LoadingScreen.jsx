@@ -6,7 +6,6 @@ import { identityAvatarUrl, identityName } from '../bloxity/sdk'
 import { connect } from '../net/network'
 import { useGame } from '../net/store'
 import { Btn, St } from './common'
-import { OreIcon, WeaponIcon } from './Icons'
 
 /** A stable key for the player's saved progress: Bloxity user, else a local guest id. */
 function playerKey(identity, isLoggedIn) {
@@ -30,7 +29,9 @@ const SESSION_WAIT_MS = 4000
 /** Tips that rotate under the loading bar. */
 const TIPS = [
   'Click fast to chain a 5-hit combo, ending in a spin slash!',
-  'Press Q to leap forward and smash the ground.',
+  'Press Q to leap at an enemy and strike it down.',
+  'Press V to turn Auto Fight on or off.',
+  'Forge armor to raise your max health.',
   'Stand on a training pad to train by yourself.',
   'Bring ores to the Forge and pick Sword or Axe.',
   'Upgrade your bag at the Shop to carry more ores.',
@@ -38,33 +39,40 @@ const TIPS = [
   'Press H any time to head Home.',
 ]
 
-/** Ores drifting up the background: [ore, left %, size, delay s, duration s]. */
-const FLOATERS = [
-  ['ruby', 8, 54, 0, 9],
-  ['sapphire', 20, 40, 3, 11],
-  ['gold', 33, 46, 6, 10],
-  ['emerald', 66, 44, 1.5, 12],
-  ['amethyst', 78, 56, 4.5, 9.5],
-  ['jade', 90, 38, 7, 11],
-]
-
-/** A row of castle towers along the bottom edge. */
-function CastleSkyline() {
-  const towers = [
-    [0, 90, 150], [70, 60, 110], [120, 110, 190], [220, 70, 130], [280, 90, 160],
-    [360, 60, 120], [410, 120, 210], [520, 70, 140], [580, 100, 175], [670, 60, 115],
-    [720, 110, 200], [820, 80, 145], [890, 100, 170], [980, 70, 130],
-  ]
+/** One sword standing point-up, centred on (100, 100) so two can be crossed about it. */
+function Sword({ angle, guard }) {
   return (
-    <svg className="ls-castle" viewBox="0 0 1060 220" preserveAspectRatio="none" aria-hidden="true">
-      {towers.map(([x, w, h]) => (
-        <g key={x}>
-          <rect x={x} y={220 - h} width={w} height={h} />
-          {Array.from({ length: Math.floor(w / 20) }, (_, i) => (
-            <rect key={i} x={x + i * 20 + 2} y={220 - h - 12} width={12} height={12} />
-          ))}
-        </g>
+    <g transform={`rotate(${angle} 100 100)`}>
+      {/* Blade: a bright edge on the left, a shaded one on the right, a fuller down the middle. */}
+      <path d="M100 8 L110 26 L110 132 L90 132 L90 26 Z" fill="url(#lsBlade)" stroke="#151522" strokeWidth="4" strokeLinejoin="round" />
+      <path d="M100 8 L110 26 L110 132 L100 132 Z" fill="#000" opacity="0.14" />
+      <rect x="98" y="30" width="4" height="96" rx="2" fill="#9aa6bd" />
+      {/* Cross-guard with round ends and a gem */}
+      <rect x="70" y="130" width="60" height="12" rx="6" fill={guard} stroke="#151522" strokeWidth="4" />
+      <circle cx="100" cy="136" r="5" fill="#ff4d5e" stroke="#151522" strokeWidth="2" />
+      {/* Wrapped grip and pommel */}
+      <rect x="94" y="142" width="12" height="32" rx="3" fill="#5a3418" stroke="#151522" strokeWidth="4" />
+      {[150, 158, 166].map((y) => (
+        <line key={y} x1="95" y1={y} x2="105" y2={y + 4} stroke="#3a2010" strokeWidth="2" />
       ))}
+      <circle cx="100" cy="181" r="8" fill={guard} stroke="#151522" strokeWidth="4" />
+    </g>
+  )
+}
+
+/** Two swords crossed in an X: the game's emblem. */
+function CrossedSwords({ size = 190 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 200 200" aria-hidden="true">
+      <defs>
+        <linearGradient id="lsBlade" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="0.5" stopColor="#dfe7f5" />
+          <stop offset="1" stopColor="#b8c4da" />
+        </linearGradient>
+      </defs>
+      <Sword angle={-38} guard="#ffc629" />
+      <Sword angle={38} guard="#ffc629" />
     </svg>
   )
 }
@@ -152,47 +160,18 @@ export function LoadingScreen({ onDone }) {
       style={{
         opacity: leaving ? 0 : 1,
         pointerEvents: leaving ? 'none' : 'auto',
-        background: 'radial-gradient(ellipse at 50% 42%, #3a55c8 0%, #1d2a78 38%, #0d1440 70%, #060818 100%)',
+        background: 'radial-gradient(ellipse at 50% 40%, #243a8f 0%, #16215e 45%, #0b1130 100%)',
       }}
     >
-      {/* Background: slow light rays, drifting ores, twinkles and a castle skyline. */}
-      <div className="ls-rays pointer-events-none" />
-      {FLOATERS.map(([ore, left, size, delay, dur]) => (
-        <div key={ore} className="ls-float pointer-events-none" style={{ left: `${left}%`, animationDelay: `${delay}s`, animationDuration: `${dur}s` }}>
-          <OreIcon type={ore} size={size} />
-        </div>
-      ))}
-      {Array.from({ length: 18 }, (_, i) => (
-        <span
-          key={i}
-          className="ls-twinkle pointer-events-none"
-          style={{ left: `${(i * 53) % 100}%`, top: `${(i * 37) % 70}%`, animationDelay: `${(i % 6) * 0.45}s` }}
-        />
-      ))}
-      <CastleSkyline />
-
       <div className="ls-logo relative flex flex-col items-center">
-        {/* Two blades crossed behind the title, swaying. */}
-        <div className="ls-sword ls-sword-l pointer-events-none absolute">
-          <WeaponIcon weaponId="golden_dragon" size={210} />
+        <CrossedSwords />
+        <div className="relative -mt-8 flex items-start">
+          <St className="grad-gold ls-title text-[132px] leading-none">LOOT</St>
+          <St className="new-tag ls-plus absolute -right-16 -top-3 !text-[54px]">+1</St>
         </div>
-        <div className="ls-sword ls-sword-r pointer-events-none absolute">
-          <WeaponIcon weaponId="azure_apex" size={210} />
-        </div>
-        <St className="new-tag ls-plus !text-[84px]" style={{ transform: 'rotate(-8deg)' }}>
-          +1
-        </St>
-        <St className="grad-gold ls-title -mt-4 text-[150px] leading-none italic" style={{ transform: 'rotate(-4deg)' }}>
-          LOOT
-        </St>
-        <St className="ls-title text-[96px] leading-none italic" style={{ transform: 'rotate(-4deg)', color: '#8fe0ff' }}>
+        <St className="ls-title -mt-2 text-[84px] leading-none" style={{ color: '#8fe0ff' }}>
           TO FORGE
         </St>
-        <div className="ls-ores mt-6 flex gap-2">
-          <OreIcon type="ruby" size={58} />
-          <OreIcon type="gold" size={58} />
-          <OreIcon type="sapphire" size={58} />
-        </div>
       </div>
 
       <div className="mt-10 flex w-[640px] max-w-[88vw] flex-col items-center gap-3">
@@ -207,12 +186,8 @@ export function LoadingScreen({ onDone }) {
           </>
         ) : (
           <>
-            <div className="ls-bar relative h-[44px] w-full">
+            <div className="ls-bar relative h-[40px] w-full">
               <div className="ls-fill" style={{ width: `${pct}%` }} />
-              {/* A little sword rides the leading edge of the bar. */}
-              <div className="ls-rider pointer-events-none absolute" style={{ left: `calc(${pct}% - 26px)` }}>
-                <WeaponIcon weaponId="solar_crown" size={52} />
-              </div>
               <div className="absolute inset-0 grid place-items-center">
                 <St className="text-2xl">{shown}%</St>
               </div>

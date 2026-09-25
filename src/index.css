@@ -1004,80 +1004,13 @@ button {
 /* ---------------------------------------------------------------------------
  * Loading screen
  * ------------------------------------------------------------------------- */
-.ls-rays {
-  position: absolute;
-  left: 50%;
-  top: 42%;
-  width: 2400px;
-  height: 2400px;
-  margin: -1200px 0 0 -1200px;
-  background: repeating-conic-gradient(from 0deg, rgba(143, 224, 255, 0.07) 0deg 9deg, transparent 9deg 22deg);
-  mask-image: radial-gradient(circle, #000 0%, transparent 55%);
-  animation: lsSpin 60s linear infinite;
-}
-@keyframes lsSpin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-.ls-float {
-  position: absolute;
-  bottom: -80px;
-  opacity: 0;
-  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.35));
-  animation: lsFloat 10s linear infinite;
-}
-@keyframes lsFloat {
-  0% {
-    transform: translateY(0) rotate(-10deg);
-    opacity: 0;
-  }
-  12% {
-    opacity: 0.85;
-  }
-  85% {
-    opacity: 0.85;
-  }
-  100% {
-    transform: translateY(-115vh) rotate(20deg);
-    opacity: 0;
-  }
-}
-.ls-twinkle {
-  position: absolute;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #fff6c0;
-  box-shadow: 0 0 10px 3px rgba(255, 230, 140, 0.8);
-  animation: lsTwinkle 2.7s ease-in-out infinite;
-}
-@keyframes lsTwinkle {
-  0%,
-  100% {
-    opacity: 0.1;
-    transform: scale(0.6);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.2);
-  }
-}
-.ls-castle {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  height: 22vh;
-  fill: #070a22;
-  opacity: 0.9;
-}
+/* Calm and still: only the logo's entrance and the bar filling move. */
 .ls-logo {
-  animation: lsLogoIn 0.8s cubic-bezier(0.2, 1.4, 0.4, 1) both, lsBob 3.4s ease-in-out 0.8s infinite;
+  animation: lsLogoIn 0.6s cubic-bezier(0.2, 1.3, 0.4, 1) both;
 }
 @keyframes lsLogoIn {
   from {
-    transform: scale(0.4) rotate(-6deg);
+    transform: scale(0.85);
     opacity: 0;
   }
   to {
@@ -1085,94 +1018,28 @@ button {
     opacity: 1;
   }
 }
-@keyframes lsBob {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-10px);
-  }
+.ls-logo svg {
+  filter: drop-shadow(0 6px 0 rgba(0, 0, 0, 0.35));
 }
 .ls-title {
-  filter: drop-shadow(0 8px 0 rgba(0, 0, 0, 0.45)) drop-shadow(0 0 24px rgba(255, 210, 90, 0.25));
+  filter: drop-shadow(0 7px 0 rgba(0, 0, 0, 0.4));
 }
 .ls-plus {
-  animation: lsPulse 1.6s ease-in-out infinite;
-}
-@keyframes lsPulse {
-  0%,
-  100% {
-    scale: 1;
-  }
-  50% {
-    scale: 1.12;
-  }
-}
-.ls-sword {
-  top: 50%;
-  left: 50%;
-  margin: -105px 0 0 -105px;
-  opacity: 0.9;
-  filter: drop-shadow(0 0 18px rgba(143, 224, 255, 0.45));
-}
-.ls-sword-l {
-  animation: lsSwayL 3s ease-in-out infinite;
-}
-.ls-sword-r {
-  animation: lsSwayR 3s ease-in-out infinite;
-}
-@keyframes lsSwayL {
-  0%,
-  100% {
-    transform: translate(-190px, -30px) rotate(-20deg);
-  }
-  50% {
-    transform: translate(-200px, -40px) rotate(-28deg);
-  }
-}
-@keyframes lsSwayR {
-  0%,
-  100% {
-    transform: translate(190px, -30px) rotate(20deg) scaleX(-1);
-  }
-  50% {
-    transform: translate(200px, -40px) rotate(28deg) scaleX(-1);
-  }
-}
-.ls-ores > * {
-  animation: lsBob 2s ease-in-out infinite;
-}
-.ls-ores > *:nth-child(2) {
-  animation-delay: 0.3s;
-}
-.ls-ores > *:nth-child(3) {
-  animation-delay: 0.6s;
+  transform: rotate(12deg);
 }
 .ls-bar {
-  border-radius: 22px;
+  border-radius: 20px;
   border: 4px solid #151522;
-  background: #141833;
-  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.15), 0 0 30px rgba(255, 184, 0, 0.25), inset 0 4px 8px rgba(0, 0, 0, 0.5);
-  overflow: visible;
+  background: #10152e;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12), inset 0 4px 8px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
 }
 .ls-fill {
   height: 100%;
-  border-radius: 18px;
-  background: repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.22) 0 12px, transparent 12px 24px), linear-gradient(#ffe46b, #ffb800 55%, #ff8a00);
-  background-size: 34px 34px, 100% 100%;
-  box-shadow: 0 0 16px rgba(255, 200, 60, 0.7);
-  animation: lsStripes 0.8s linear infinite;
-}
-@keyframes lsStripes {
-  to {
-    background-position: 34px 0, 0 0;
-  }
-}
-.ls-rider {
-  top: -30px;
-  transform: rotate(-35deg);
-  filter: drop-shadow(0 0 8px rgba(255, 220, 120, 0.8));
+  border-radius: 16px;
+  background: linear-gradient(#ffe46b, #ffb800 55%, #ff9a00);
+  box-shadow: inset 0 3px 0 rgba(255, 255, 255, 0.45);
+  transition: width 0.15s linear;
 }
 .ls-tip {
   padding: 6px 18px;

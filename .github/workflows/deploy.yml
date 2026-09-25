@@ -1,0 +1,46 @@
+# Builds the client and uploads it to Bloxity hosting.
+#   dev branch  -> dev channel  (https://loot-to-forge.dev.play.bloxity.io)
+#   main branch -> prod channel (https://loot-to-forge.play.bloxity.io)
+# Needs one repo secret: LEGION_DEPLOY_TOKEN.
+name: Deploy client
+
+on:
+  push:
+    branches: [dev, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GAME_ID: loot-to-forge
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Zip the build
+        run: cd dist && zip -qr ../build.zip .
+
+      - name: Upload to Bloxity
+        env:
+          LEGION_DEPLOY_TOKEN: ${{ secrets.LEGION_DEPLOY_TOKEN }}
+        run: |
+          if [ "${GITHUB_REF_NAME}" = "main" ]; then CHANNEL=prod; else CHANNEL=dev; fi
+          curl -sf -X POST \
+            "https://api.bloxity.io/v1/hosting/games/${GAME_ID}/frontend?channel=${CHANNEL}&version=${GITHUB_SHA}" \
+            -H "Authorization: Bearer ${LEGION_DEPLOY_TOKEN}" \
+            -H "Content-Type: application/zip" \
+            --data-binary @build.zip
