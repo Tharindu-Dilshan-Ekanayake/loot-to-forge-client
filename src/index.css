@@ -553,6 +553,10 @@ button {
   inset: 0 auto 0 0;
   background: linear-gradient(#7dff5a, #22c21f);
 }
+/* Enemy bars stay red at every health level. */
+.wl-enemy .wl-bar-fill {
+  background: linear-gradient(#ff5a4e, #c01a1a) !important;
+}
 .wl-bar-text {
   position: absolute;
   inset: 0;

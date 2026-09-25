@@ -147,13 +147,12 @@ export function makeNameTag(className = '') {
   }
 }
 
-/** Enemy / event-ore health plate: name over a green bar with "hp/max". */
+/** Enemy / event-ore health plate: name over a green bar with "hp/max". A falsy `name` leaves the name off. */
 export function makeHealthPlate(name, className = '') {
-  const title = h('div', 'wl-title', name)
   const fill = h('div', 'wl-bar-fill')
   const text = h('div', 'wl-bar-text', '')
   const bar = h('div', 'wl-bar', [fill, text])
-  const el = h('div', `wl-plate ${className}`, [title, bar])
+  const el = h('div', `wl-plate ${className}`, name ? [h('div', 'wl-title', name), bar] : [bar])
   let last = ''
   return {
     el,

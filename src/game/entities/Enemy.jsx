@@ -337,7 +337,7 @@ export function Enemy({ id }) {
   const bodyType = type.body || 'humanoid'
 
   useEffect(() => {
-    const plate = makeHealthPlate(type.name, type.boss ? 'wl-boss' : elite ? 'wl-elite' : '')
+    const plate = makeHealthPlate(null, `wl-enemy ${type.boss ? 'wl-boss' : elite ? 'wl-elite' : ''}`)
     const off = addAnchor(`enemy-${id}`, {
       el: plate.el,
       getPos: () => (st.current.alive && st.current.shown ? group.current?.position : null),
