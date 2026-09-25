@@ -2,6 +2,7 @@ import { useCallback, useLayoutEffect, useRef } from 'react'
 import { Matrix4 } from 'three'
 
 import { buildMerged, mergeableMesh, planMerge } from './meshMerge'
+import { pauseMatrices } from './stageWindow'
 
 const _inv = new Matrix4()
 const _rel = new Matrix4()
@@ -59,14 +60,23 @@ export function Merged({ children, immutable = false, ref: outerRef, ...rest }) 
       mesh.userData.mergedOutput = true
       mesh.name = 'merged'
       root.add(mesh)
-      for (const o of plan.meshes) o.visible = false
+      // Placed now, in case an ancestor is frozen out of the matrix pass (StaticBatch).
+      mesh.updateWorldMatrix(false, false)
+      for (const o of plan.meshes) {
+        // Hidden, and out of the per-frame matrix pass: nothing draws them now.
+        o.visible = false
+        pauseMatrices(o, true)
+      }
       made.push({ mesh, members: plan.meshes })
     }
     return () => {
       for (const { mesh, members } of made) {
         root.remove(mesh)
         mesh.geometry.dispose()
-        for (const o of members) o.visible = true
+        for (const o of members) {
+          o.visible = true
+          pauseMatrices(o, false)
+        }
       }
     }
   })

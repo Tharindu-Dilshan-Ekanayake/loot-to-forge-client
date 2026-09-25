@@ -6,6 +6,12 @@ import { AdditiveBlending, DoubleSide, MeshBasicMaterial, MeshStandardMaterial }
 import Merged from '../Merged'
 import { faceTexture, glowTexture, mat, signboardTexture, textTexture, worldBox } from '../textures'
 
+/** Is `obj` drawn at all, i.e. is it and every ancestor visible? */
+function shownInWorld(obj) {
+  for (let p = obj; p; p = p.parent) if (!p.visible) return false
+  return true
+}
+
 /** Face materials, one per face, skin and eye glow (shared, so faces can batch). */
 const faceMaterials = new Map()
 function faceMaterial(face, skin, glow) {
@@ -581,6 +587,9 @@ export function BlockyCharacter({
   const skinMat = emissive ? mat(skin, { emissive, emissiveIntensity: 0.25 }) : mat(skin)
 
   useFrame(({ clock }) => {
+    // Nobody sees a hidden character (a far stage's enemies, a dormant one):
+    // skip posing it until it's back in view.
+    if (!torso.current || !shownInWorld(torso.current)) return
     const p = pose?.current
     const t = clock.elapsedTime
     const walk = p?.walk ?? 0

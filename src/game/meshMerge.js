@@ -105,40 +105,48 @@ export function planMerge(meshes, { immutable = false } = {}) {
 }
 
 /**
- * Builds one mesh from a plan, in the space whose world matrix inverse is
- * `rootInverse` (the members' matrixWorld must be current). Returns null when
- * the geometries can't be combined.
+ * Building a merged mesh, a member at a time, so a big one can be spread over
+ * several frames: `beginMerged(plan)`, `addToMerged(state, mesh, rootInverse)`
+ * for each member (its matrixWorld current), then `finishMerged(state)`.
  */
-export function buildMerged(plan, rootInverse) {
-  const geos = []
-  const anyNonIndexed = plan.meshes.some((o) => !o.geometry.index)
-  for (const o of plan.meshes) {
-    let g = o.geometry.clone()
-    g.clearGroups()
-    for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name)
-    if (anyNonIndexed && g.index) {
-      const flat = g.toNonIndexed()
-      g.dispose()
-      g = flat
-    }
-    const count = g.attributes.position.count
-    if (!g.attributes.normal) g.computeVertexNormals()
-    if (!g.attributes.uv) g.setAttribute('uv', new BufferAttribute(new Float32Array(count * 2), 2))
-    if (plan.bake) {
-      const c = o.material.color
-      const colors = new Float32Array(count * 3)
-      for (let i = 0; i < count; i += 1) {
-        colors[i * 3] = c.r
-        colors[i * 3 + 1] = c.g
-        colors[i * 3 + 2] = c.b
-      }
-      g.setAttribute('color', new BufferAttribute(colors, 3))
-    }
-    g.applyMatrix4(_rel.multiplyMatrices(rootInverse, o.matrixWorld))
-    geos.push(g)
+export function beginMerged(plan) {
+  return { plan, geos: [], anyNonIndexed: plan.meshes.some((o) => !o.geometry.index) }
+}
+
+/** Adds one member's geometry, in the space whose world matrix inverse is `rootInverse`. */
+export function addToMerged(state, o, rootInverse) {
+  let g = o.geometry.clone()
+  g.clearGroups()
+  for (const name of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(name)) g.deleteAttribute(name)
+  if (state.anyNonIndexed && g.index) {
+    const flat = g.toNonIndexed()
+    g.dispose()
+    g = flat
   }
+  const count = g.attributes.position.count
+  if (!g.attributes.normal) g.computeVertexNormals()
+  if (!g.attributes.uv) g.setAttribute('uv', new BufferAttribute(new Float32Array(count * 2), 2))
+  if (state.plan.bake) {
+    const c = o.material.color
+    const colors = new Float32Array(count * 3)
+    for (let i = 0; i < count; i += 1) {
+      colors[i * 3] = c.r
+      colors[i * 3 + 1] = c.g
+      colors[i * 3 + 2] = c.b
+    }
+    g.setAttribute('color', new BufferAttribute(colors, 3))
+  }
+  g.applyMatrix4(_rel.multiplyMatrices(rootInverse, o.matrixWorld))
+  state.geos.push(g)
+}
+
+/** The merged mesh, or null when the geometries can't be combined. */
+export function finishMerged(state) {
+  const { geos, plan } = state
+  if (!geos.length) return null
   const geometry = geos.length === 1 ? geos[0] : mergeGeometries(geos, false)
   if (geos.length > 1) for (const g of geos) g.dispose()
+  state.geos = []
   if (!geometry) return null
   geometry.computeBoundingSphere()
   geometry.computeBoundingBox()
@@ -147,6 +155,22 @@ export function buildMerged(plan, rootInverse) {
   mesh.castShadow = first.castShadow
   mesh.receiveShadow = first.receiveShadow
   return mesh
+}
+
+/** Drops a half-built merge. */
+export function abandonMerged(state) {
+  for (const g of state.geos) g.dispose()
+  state.geos = []
+}
+
+/**
+ * Builds one mesh from a plan in one go, in the space whose world matrix
+ * inverse is `rootInverse` (the members' matrixWorld must be current).
+ */
+export function buildMerged(plan, rootInverse) {
+  const state = beginMerged(plan)
+  for (const o of plan.meshes) addToMerged(state, o, rootInverse)
+  return finishMerged(state)
 }
 
 /** A mirrored transform would turn a member inside out once baked into shared geometry. */

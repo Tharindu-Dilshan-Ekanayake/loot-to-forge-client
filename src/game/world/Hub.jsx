@@ -2,7 +2,9 @@ import { useFrame } from '@react-three/fiber'
 import { CuboidCollider, CylinderCollider, RigidBody } from '@react-three/rapier'
 import { memo, useMemo, useRef } from 'react'
 
+import { useGame } from '../../net/store'
 import { HUB } from '../../shared/gameData'
+import { pauseMatrices } from '../stageWindow'
 import { mat } from '../textures'
 import { DungeonPortal, LeaderboardStage } from './Boards'
 import Forge from './Forge'
@@ -280,23 +282,35 @@ function Decorations() {
 
 /**
  * The whole lobby world. Static, so memoised against store-driven re-renders.
- * Never hidden: it holds point lights, and a change in the scene's light count
- * makes three.js recompile every material, a long freeze mid-walk.
+ * Hidden (and out of the matrix pass) once you're two stages into the dungeon,
+ * where walls stand between you and it. It holds no lights, so hiding it
+ * doesn't change the light count (which would make three.js recompile every
+ * material, a long freeze mid-walk).
  */
 export const Hub = memo(function Hub() {
+  const root = useRef()
+  useFrame(() => {
+    const g = root.current
+    if (!g) return
+    const shown = useGame.getState().stage < 2
+    if (g.visible !== shown) g.visible = shown
+    pauseMatrices(g, !shown)
+  })
   return (
-    <StaticBatch>
-      <Ground />
-      <Fountain />
-      <CastleWalls />
-      <FrostboundTower wall={WALL} />
-      <Stations />
-      <Forge />
-      <DungeonPortal />
-      <TrainArea />
-      <LeaderboardStage />
-      <Decorations />
-    </StaticBatch>
+    <group ref={root}>
+      <StaticBatch>
+        <Ground />
+        <Fountain />
+        <CastleWalls />
+        <FrostboundTower wall={WALL} />
+        <Stations />
+        <Forge />
+        <DungeonPortal />
+        <TrainArea />
+        <LeaderboardStage />
+        <Decorations />
+      </StaticBatch>
+    </group>
   )
 })
 

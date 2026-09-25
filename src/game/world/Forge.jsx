@@ -8,6 +8,8 @@ import { mat } from '../textures'
 import { Block, Glow, Label, Solid } from './props'
 
 const [FX, , FZ] = HUB.stations.forge.pos
+/** Marks a part that only moves now and then, so the world never freezes it (StaticBatch). */
+const NO_FREEZE = { noFreeze: true }
 
 function Chain({ position, links = 10, rotY = 0 }) {
   const m = mat('#e8edf5', { roughness: 0.4, metalness: 0.2 })
@@ -38,7 +40,6 @@ function Fence({ position, rotY = 0 }) {
 
 function Crucible() {
   const molten = useRef()
-  const light = useRef()
   const drops = useRef()
   const lavaMat = useMemo(
     () =>
@@ -62,7 +63,6 @@ function Crucible() {
     const boost = active ? 1.35 + Math.sin(t * 18) * 0.2 : 1
     lavaMat.emissiveIntensity = (0.9 + Math.sin(t * 2.2) * 0.12) * boost
     floorLava.emissiveIntensity = 0.8 + Math.sin(t * 3 + 1) * 0.2
-    if (light.current) light.current.intensity = (18 + Math.sin(t * 7) * 3) * boost
     if (molten.current) molten.current.position.y = 3.25 + Math.sin(t * 1.5) * 0.04
     if (drops.current) {
       // Ore chunks tumbling into the pot while the cinematic runs.
@@ -99,9 +99,10 @@ function Crucible() {
       <Block size={[1, 0.3, 1.2]} position={[0, 2.6, 2.7]} m={lavaMat} cast={false} />
       <Block size={[1.4, 0.12, 3]} position={[0, 0.06, 4.4]} m={floorLava} cast={false} />
       <Block size={[3, 0.3, 0.6]} position={[0, 0.15, 6.2]} m="stoneDark" tile={2} />
-      <Glow position={[0, 4, 0]} color="#ffb000" size={9} opacity={0.55} />
-      <pointLight ref={light} position={[0, 5, 0]} color="#ff9a2e" intensity={18} distance={16} decay={2} />
-      <group ref={drops}>
+      {/* The fire's glow; no point light (every lit pixel in the world pays for one). */}
+      <Glow position={[0, 4, 0]} color="#ffb000" size={11} opacity={0.62} />
+      {/* Still between forgings, then tumbling: never frozen out of the matrix pass. */}
+      <group ref={drops} userData={NO_FREEZE}>
         {oreTypes.map((o) => (
           <mesh key={o} material={mat(ORES[o].color, { emissive: ORES[o].color, emissiveIntensity: 0.4, flatShading: true })}>
             <octahedronGeometry args={[0.35, 0]} />
