@@ -141,7 +141,7 @@ export function GameScene() {
       gl={{ antialias: true, powerPreference: 'high-performance' }}
       onCreated={({ gl, scene }) => {
         // Dev only: lets the perf scripts read draw calls and scene size.
-        if (import.meta.env.DEV) window.__three = { gl, scene }
+        if (import.meta.env.DEV || import.meta.env.VITE_PERF_HOOKS) window.__three = { gl, scene }
         gl.toneMapping = NeutralToneMapping
         gl.toneMappingExposure = 1
       }}

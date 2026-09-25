@@ -2,8 +2,9 @@
  * All game audio, synthesised with the Web Audio API — no sound files to ship or
  * license. `sfx(name)` plays a one-shot.
  *
- * Browsers only allow audio after a user gesture, so the context is created lazily
- * by `unlockAudio()`, which the app calls on the first click / key press.
+ * Browsers only allow audio after a user gesture: the context is built while the
+ * game loads (`prepareAudio()`) and started by `unlockAudio()`, which the app
+ * calls on the first click / key press.
  */
 
 let ctx = null
@@ -12,27 +13,51 @@ let sfxBus = null
 let noiseBuffer = null
 let volumes = { sfx: 0.8 }
 
+/**
+ * Builds the audio graph ahead of time, while the game loads. Creating an
+ * AudioContext stalls the main thread for a good fraction of a second on some
+ * machines; done lazily on the first key press, that stall landed on the very
+ * first step you took. Browsers keep it suspended until a user gesture, when
+ * `unlockAudio()` only has to resume it.
+ */
+export function prepareAudio() {
+  if (ctx) return
+  const AC = window.AudioContext || window.webkitAudioContext
+  if (!AC) return
+  try {
+    ctx = new AC()
+  } catch {
+    ctx = null
+    return
+  }
+  buildGraph()
+}
+
 export function unlockAudio() {
   if (!ctx) {
     const AC = window.AudioContext || window.webkitAudioContext
     if (!AC) return
     ctx = new AC()
-    master = ctx.createGain()
-    master.gain.value = 0.9
-    // A gentle compressor keeps stacked hits from clipping.
-    const comp = ctx.createDynamicsCompressor()
-    comp.threshold.value = -14
-    comp.ratio.value = 4
-    master.connect(comp).connect(ctx.destination)
-    sfxBus = ctx.createGain()
-    sfxBus.connect(master)
-    applyVolumes()
-
-    noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
-    const data = noiseBuffer.getChannelData(0)
-    for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1
+    buildGraph()
   }
   if (ctx.state === 'suspended') ctx.resume()
+}
+
+function buildGraph() {
+  master = ctx.createGain()
+  master.gain.value = 0.9
+  // A gentle compressor keeps stacked hits from clipping.
+  const comp = ctx.createDynamicsCompressor()
+  comp.threshold.value = -14
+  comp.ratio.value = 4
+  master.connect(comp).connect(ctx.destination)
+  sfxBus = ctx.createGain()
+  sfxBus.connect(master)
+  applyVolumes()
+
+  noiseBuffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate)
+  const data = noiseBuffer.getChannelData(0)
+  for (let i = 0; i < data.length; i += 1) data[i] = Math.random() * 2 - 1
 }
 
 export function setVolumes(next) {
@@ -141,6 +166,58 @@ function ring(base, vol, decay = 0.25, at = 0) {
 }
 
 /**
+ * The sound of two swords meeting. `pitch` scales the ring (1 = a mid-sized
+ * blade); `power` (1 normal, ~1.5 a big blow) sets loudness and how long it rings.
+ */
+function swordClash(pitch = 1, power = 1) {
+  // The strike itself: a sharp, bright crack, over in a few thousandths of a second.
+  shapedNoise({
+    type: 'highpass',
+    q: 0.7,
+    freqs: [
+      [0, 3800 * pitch],
+      [0.02, 6500 * pitch],
+    ],
+    gains: [
+      [0, 0.5 * power],
+      [0.025, 0.0001],
+    ],
+  })
+  // Two blades, each a set of inharmonic partials (steel rings like a struck
+  // bar), tuned a little apart so the two rings beat: that shimmer is what
+  // makes it read as two swords rather than one bell.
+  const decay = 0.32 * power
+  for (const [base, vol] of [
+    [1180 * pitch, 0.13],
+    [1180 * pitch * 1.017, 0.11],
+  ]) {
+    for (const [ratio, v, d] of [
+      [1, 1, 1],
+      [2.76, 0.62, 0.7],
+      [5.4, 0.4, 0.45],
+      [8.93, 0.22, 0.3],
+    ]) {
+      tone({ freq: base * ratio, dur: decay * d, vol: vol * v * power, attack: 0.0015 })
+    }
+  }
+  // The scrape as the edges slide past each other: a rising, hissy "shing".
+  shapedNoise({
+    q: 3.2,
+    freqs: [
+      [0, 2600 * pitch],
+      [0.09, 7200 * pitch],
+    ],
+    gains: [
+      [0.004, 0.0001],
+      [0.02, 0.16 * power],
+      [0.11, 0.0001],
+    ],
+  })
+  // A little weight behind it, so it isn't all treble.
+  tone({ freq: 210 * pitch, to: 95, type: 'triangle', dur: 0.09, vol: 0.16 * power, attack: 0.002 })
+}
+
+/**
  * Footsteps by surface: [heel thump lowpass Hz, heel level, scuff band Hz,
  * scuff level, scuff length]. Grass rustles, stone clicks, snow crunches.
  */
@@ -230,42 +307,16 @@ const SFX = {
     ring(2900 * pitch, 0.02, 0.3)
   },
   /**
-   * A blow landing: the thud of the impact, the wet slash of the cut, a crunch,
-   * and the blade's metal ringing off armour.
+   * Two swords clashing: a hard, bright strike, two blades ringing at slightly
+   * different pitches (they beat against each other), and the scrape of steel
+   * sliding off steel. Each hit rolls a fresh pitch so a fight doesn't repeat.
    */
-  hit: () => {
-    const p = 0.9 + Math.random() * 0.2
-    tone({ freq: 140 * p, to: 42, type: 'sine', dur: 0.2, vol: 0.5, attack: 0.002 })
-    shapedNoise({
-      type: 'lowpass',
-      q: 0.8,
-      freqs: [
-        [0, 2600 * p],
-        [0.12, 500],
-      ],
-      gains: [
-        [0, 0.42],
-        [0.12, 0.0001],
-      ],
-    })
-    shapedNoise({
-      q: 2.2,
-      freqs: [
-        [0, 3400 * p],
-        [0.05, 1800],
-      ],
-      gains: [
-        [0, 0.18],
-        [0.05, 0.0001],
-      ],
-    })
-    ring(1850 * p, 0.035, 0.22, 0.005)
-  },
+  hit: () => swordClash(0.9 + Math.random() * 0.25, 1),
+  /** A critical: a bigger, longer-ringing clash with a deep impact under it. */
   crit: () => {
-    SFX.hit()
-    tone({ freq: 90, to: 32, type: 'sine', dur: 0.3, vol: 0.4, attack: 0.002 })
-    ring(2600, 0.06, 0.45, 0.01)
-    tone({ freq: 1500, to: 2400, type: 'triangle', dur: 0.18, vol: 0.1, at: 0.02 })
+    swordClash(1.15, 1.45)
+    tone({ freq: 95, to: 34, type: 'sine', dur: 0.28, vol: 0.32, attack: 0.002 })
+    ring(4200, 0.05, 0.5, 0.012)
   },
   oreHit: () => {
     clang(1600 + Math.random() * 300, 0.12, 0, 0.3)
@@ -353,11 +404,8 @@ const SFX = {
     noise({ dur: 0.5, vol: 0.45, freq: 800, to: 100, type: 'lowpass' })
   },
   roll: () => tone({ freq: 900 + Math.random() * 500, type: 'square', dur: 0.04, vol: 0.05 }),
-  // Another player's hit landing: a short, lighter clang.
-  hitOther: (k = 1) => {
-    noise({ dur: 0.08, vol: 0.12 * k, type: 'bandpass', freq: 2400, to: 900, q: 1.4 })
-    tone({ freq: 520, to: 300, type: 'triangle', dur: 0.08, vol: 0.06 * k })
-  },
+  // Another player's hit landing: the same clash, quieter and shorter with distance.
+  hitOther: (k = 1) => swordClash(0.95 + Math.random() * 0.2, 0.35 + 0.5 * k),
   // A footfall: the heel strikes (a low, dull thump), then the sole rolls and
   // scuffs off the toe a beat later; the surface decides how each sounds. Left
   // and right feet differ a touch so a walk has a rhythm. `k` scales it

@@ -433,10 +433,13 @@ export function Enemy({ id }) {
       body.current.position.set(0, 0, 0)
       if (flash.current) flash.current.material.opacity = Math.max(0, 0.9 - t * 3)
       g.visible = t < 1
+      // Gone (or dormant until you pass the barrier): out of the matrix pass too.
+      pauseMatrices(g, t >= 1)
       return
     }
     if (!s.alive) {
       s.alive = true
+      pauseMatrices(g, false)
       g.position.set(e.x, 0, e.z)
       track.reset(e.x, e.z, serverNowS())
       s.bx = e.x

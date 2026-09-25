@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { setVolumes, unlockAudio } from './audio/sound'
+import { prepareAudio, setVolumes, unlockAudio } from './audio/sound'
 import GameScene from './game/GameScene'
 import { setLabelLayer } from './game/labels'
 import { useGame } from './net/store'
@@ -32,6 +32,9 @@ function AudioDirector() {
   const settings = useGame((s) => s.settings)
 
   useEffect(() => {
+    // Built now, during loading: creating it can stall a frame or two, and on
+    // the first key press that stall would land on your first step.
+    prepareAudio()
     const unlock = () => unlockAudio()
     window.addEventListener('pointerdown', unlock)
     window.addEventListener('keydown', unlock)

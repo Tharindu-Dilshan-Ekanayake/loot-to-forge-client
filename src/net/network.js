@@ -289,7 +289,7 @@ export async function connect({ name, key, avatar, pfp }) {
   }
 
   // Dev only: lets the test scripts read the room (who's alive, where) and the store.
-  if (import.meta.env.DEV) {
+  if (import.meta.env.DEV || import.meta.env.VITE_PERF_HOOKS) {
     window.__room = room
     window.__game = useGame
   }

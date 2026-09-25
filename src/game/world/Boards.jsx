@@ -9,6 +9,8 @@ import { mat } from '../textures'
 import { Block, BlockyCharacter, Glow, Label, LightBeam, Solid } from './props'
 
 const FONT = (px, w = 700) => `${w} ${px}px Fredoka, 'Arial Rounded MT Bold', sans-serif`
+/** Keeps a group that changes now and then out of StaticBatch's freezing. */
+const NO_FREEZE = { noFreeze: true }
 
 function strokeText(ctx, text, x, y, fill, stroke = '#10101c', lw = 8) {
   ctx.lineJoin = 'round'
@@ -163,8 +165,9 @@ export function DungeonPortal() {
       </mesh>
       <Label text="Dungeon" position={[0, H / 2 + 0.6, 1.4]} height={2.6} colors={['#ffffff', '#ffe6fb']} stroke="#6a1a8a" />
       <Label text="Rebirth to get stronger!" position={[0, H + 5.2, 2.2]} height={1.6} colors={['#ffffff', '#f4f4ff']} stroke="#1a1a2e" />
-      <Glow position={[0, H / 2, 0.6]} color="#ff7ae0" size={11} opacity={0.22} />
-      <pointLight position={[0, H / 2, 4]} color="#ff6ae0" intensity={20} distance={16} decay={2} />
+      {/* A glow, not a point light: a real light is paid for by every lit pixel
+          in the world, everywhere, all the time. */}
+      <Glow position={[0, H / 2, 0.6]} color="#ff7ae0" size={12} opacity={0.32} />
       <group position={[0, H + 10.2, 0.8]}>
         <Block size={[10.6, 5.3, 0.4]} position={[0, 0, -0.3]} m="#7a2ad8" />
         <OreTimerBoard />
@@ -243,8 +246,9 @@ export function Leaderboard({ kind, position, rotation = [0, 0, 0] }) {
 
   const champion = rows?.[0]?.[0]
 
+  // The champion on top comes and goes with the leaderboard: never frozen.
   return (
-    <group position={position} rotation={rotation}>
+    <group position={position} rotation={rotation} userData={NO_FREEZE}>
       {/* A little stage of its own, not just standing on the lobby floor. */}
       <Solid>
         <mesh position={[0, 0.25, 0]} material={mat('stone', { roughness: 0.7 })} castShadow receiveShadow>
