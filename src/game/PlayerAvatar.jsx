@@ -50,7 +50,7 @@ const GRIP_QUAT = (() => {
     .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), READY_POSE.out))
     .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), READY_POSE.elbow))
     .invert()
-  const blade = new Vector3(0.32, 0.72, 0.62).normalize().applyQuaternion(arm)
+  const blade = new Vector3(0.55, 0.42, 0.72).normalize().applyQuaternion(arm)
   const down = new Vector3(0, -1, 0.2).applyQuaternion(arm)
   // The blade's edge is its local +X: point it as close to `down` as the blade allows.
   const edge = down.addScaledVector(blade, -down.dot(blade)).normalize()

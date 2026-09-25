@@ -6,17 +6,18 @@ import { HUB } from '../../shared/gameData'
 import { mat } from '../textures'
 import { DungeonPortal, LeaderboardStage } from './Boards'
 import Forge from './Forge'
+import FrostboundTower from './FrostboundTower'
 import StaticBatch from './StaticBatch'
 import TrainArea from './Training'
 import {
   Block,
   BlockyCharacter,
   Cloud,
-  Floaty,
   Glow,
   Label,
   Solid,
   Stall,
+  STALL_COUNTER_H,
   StallSign,
   Torch,
   Tower,
@@ -141,63 +142,6 @@ function CastleWalls() {
   )
 }
 
-function FrostboundTower() {
-  const rings = useRef()
-  useFrame((_, dt) => {
-    if (rings.current) rings.current.rotation.y += dt * 0.15
-  })
-  const chain = mat('#e8edf5', { roughness: 0.4 })
-  return (
-    <group>
-      {/* Gate in the east wall */}
-      <Solid>
-        <Block size={[3, 14, 3]} position={[WALL, 0, -9.5]} base m="frostWall" />
-        <Block size={[3, 14, 3]} position={[WALL, 0, 9.5]} base m="frostWall" />
-        <Block size={[3.4, 2.5, 22]} position={[WALL, 14, 0]} base m="frostWall" />
-      </Solid>
-      {/* Invisible barrier: you enter the tower by touching the gate, not by walking out. */}
-      <RigidBody type="fixed" colliders={false} position={[WALL + 1.5, 6, 0]}>
-        <CuboidCollider args={[0.5, 6, 8]} />
-      </RigidBody>
-      <mesh position={[WALL + 0.6, 6.5, 0]} rotation={[0, -Math.PI / 2, 0]}>
-        <planeGeometry args={[16, 13]} />
-        <meshStandardMaterial color="#9fe6ff" emissive="#5fd0ff" emissiveIntensity={0.6} transparent opacity={0.55} />
-      </mesh>
-      {/* Snowy stairs and the tower itself, outside the walls */}
-      {Array.from({ length: 8 }, (_, i) => (
-        <Block key={i} size={[3, 1.2 + i * 1.2, 14]} position={[WALL + 4 + i * 3, 0, 0]} base m="snow" />
-      ))}
-      <group position={[WALL + 40, 0, 0]}>
-        <mesh position={[0, 30, 0]} material={mat('frostWall')} castShadow>
-          <cylinderGeometry args={[9, 11, 60, 16]} />
-        </mesh>
-        <mesh position={[0, 66, 0]} material={mat('#5fd0ff', { emissive: '#2fb4ff', emissiveIntensity: 0.5 })}>
-          <coneGeometry args={[10, 14, 16]} />
-        </mesh>
-        {[12, 26, 40, 52].map((y) =>
-          [0, 1.6, 3.2, 4.8].map((a) => (
-            <mesh key={`${y}${a}`} position={[Math.sin(a) * 9.05, y, Math.cos(a) * 9.05]} rotation={[0, a, 0]}>
-              <planeGeometry args={[1.6, 4]} />
-              <meshBasicMaterial color="#7ff6ff" />
-            </mesh>
-          )),
-        )}
-        <group ref={rings}>
-          {[18, 34, 50].map((y, i) => (
-            <mesh key={y} position={[0, y, 0]} rotation={[Math.PI / 2 + (i - 1) * 0.25, 0, 0]} material={chain}>
-              <torusGeometry args={[13, 0.5, 6, 40]} />
-            </mesh>
-          ))}
-        </group>
-        <Glow position={[0, 60, 0]} color="#5fd0ff" size={40} opacity={0.35} />
-      </group>
-      <Label text="FROSTBOUND" position={[WALL - 2, 17.5, 0]} height={2.2} colors={['#e9fbff', '#5fd0ff']} stroke="#0b2a4a" />
-      <Label text="TOWER" position={[WALL - 2, 15.3, 0]} height={2} colors={['#e9fbff', '#5fd0ff']} stroke="#0b2a4a" />
-      <Label text={`Require: ${HUB.tower.rebirths} Rebirths`} position={[WALL - 3, 4.5, 0]} height={1.3} colors={['#ffffff', '#ffd6d6']} stroke="#5a0a0a" />
-    </group>
-  )
-}
-
 function Npc({ position, rotation = 0, ...look }) {
   return (
     <group position={position} rotation={[0, rotation, 0]}>
@@ -208,6 +152,20 @@ function Npc({ position, rotation = 0, ...look }) {
 
 /** Width of each shop in the market row (they stand 8.4 apart). */
 const STALL_W = 7.4
+/** The shops are built at full size, then scaled down to sit neatly in the row. */
+const STALL_SCALE = 0.82
+/** Where the counter's top surface is, for things set out on it. */
+const COUNTER_TOP = STALL_COUNTER_H + 0.3
+
+/** The shopkeeper, stood on a step behind the counter so they're seen from the plaza. */
+function Keeper(look) {
+  return (
+    <>
+      <Block size={[2.4, 0.5, 1.4]} position={[0, 0, -0.2]} base m="woodDark" tile={1.2} cast={false} />
+      <Npc position={[0, 0.5, 0.1]} {...look} />
+    </>
+  )
+}
 
 /**
  * The market: Sell, Upgrade, Enchant and Skill Index side by side in one row on
@@ -224,12 +182,12 @@ function Stations() {
       {/* Plaza under the row, joined to the road's sand trim. */}
       <Block size={[x1 - x0, 0.08, 11]} position={[(x0 + x1) / 2, 0.04, z + 2.5]} m="stone" tile={1.4} cast={false} />
       <Block size={[x1 - x0, 0.1, 0.6]} position={[(x0 + x1) / 2, 0.05, z + 8.2]} m="gold" tile={1.25} cast={false} />
-      <Label text="MARKET" position={[(x0 + x1) / 2, 14.2, z - 1]} height={2} colors={['#ffffff', '#ffe07a']} stroke="#4a2a00" />
+      <Label text="MARKET" position={[(x0 + x1) / 2, 11.8, z - 1]} height={2} colors={['#ffffff', '#ffe07a']} stroke="#4a2a00" />
 
       {/* Sell */}
-      <group position={sell.pos}>
+      <group position={sell.pos} scale={STALL_SCALE}>
         <Stall width={STALL_W} mat="#ffd23b">
-          <Npc position={[0, 0, -0.4]} skin="#ffcc6b" shirt="#ffd23b" pants="#2b6be0" hat="sombrero" />
+          <Keeper skin="#ffcc6b" shirt="#ffd23b" pants="#2b6be0" hat="sombrero" />
           {/* A pile of gold on the counter and crates stacked at the side. */}
           {[
             [-1.9, 0, 1.3],
@@ -238,68 +196,41 @@ function Stations() {
             [-1.9, 0.18, 1.55],
             [-1.7, 0.36, 1.45],
           ].map(([x, y, z], i) => (
-            <mesh key={i} position={[x, 2.2 + y, z]} material={mat('#ffd23b', { metalness: 0.6, roughness: 0.3, emissive: '#b37a00', emissiveIntensity: 0.3 })} castShadow>
+            <mesh key={i} position={[x, COUNTER_TOP + 0.08 + y, z]} material={mat('#ffd23b', { metalness: 0.6, roughness: 0.3, emissive: '#b37a00', emissiveIntensity: 0.3 })} castShadow>
               <cylinderGeometry args={[0.32, 0.32, 0.14, 12]} />
             </mesh>
           ))}
           <Block size={[1.3, 1.3, 1.3]} position={[-STALL_W / 2 - 0.9, 0, 1.6]} base m="wood" tile={1.3} />
           <Block size={[1, 1, 1]} position={[-STALL_W / 2 - 0.9, 1.3, 1.6]} rotation={[0, 0.3, 0]} base m="woodDark" tile={1} />
-          <Block size={[2.8, 2.8, 0.5]} position={[0, 7.2, -2.2]} m="gold" tile={2} />
-          <Label text="$" position={[0, 7.25, -1.8]} height={2.4} colors={['#fff27a', '#ff9a00']} stroke="#5a2a00" />
         </Stall>
         <StallSign text="SELL" icon="💰" width={STALL_W} frame="#ffd23b" colors={['#fff27a', '#ffb000']} stroke="#4a1a00" />
       </group>
 
       {/* Upgrade */}
-      <group position={upgrade.pos}>
+      <group position={upgrade.pos} scale={STALL_SCALE}>
         <Stall width={STALL_W} stripes={['#2f5ad8', '#ffffff']} mat="#2fd32f">
-          <Npc position={[0, 0, -0.4]} skin="#f2d0b0" shirt="#3a3a4a" pants="#1b1b22" hat="tophat" />
-          {[0, 1, 2].map((i) => (
-            <group key={i} position={[0, 6.8 + i * 0.9, -2.2]}>
-              <Block size={[1.4, 0.45, 0.4]} position={[-0.5, 0, 0]} rotation={[0, 0, 0.6]} m="#2fd32f" />
-              <Block size={[1.4, 0.45, 0.4]} position={[0.5, 0, 0]} rotation={[0, 0, -0.6]} m="#2fd32f" />
-            </group>
-          ))}
+          <Keeper skin="#f2d0b0" shirt="#3a3a4a" pants="#1b1b22" hat="tophat" />
         </Stall>
         <StallSign text="UPGRADE" icon="⬆️" width={STALL_W} frame="#2fd32f" colors={['#c6ff7a', '#2fd32f']} stroke="#0a3a0a" />
       </group>
 
       {/* Enchant */}
-      <group position={enchant.pos}>
+      <group position={enchant.pos} scale={STALL_SCALE}>
         <Stall width={STALL_W} stripes={['#9b4dff', '#5b1aa8']} mat="#b35bff">
-          <Npc position={[0, 0, -0.4]} skin="#f2d0b0" shirt="#c21a2e" pants="#3a0a14" hat="wizard" face="smile" />
-          <mesh position={[1.8, 2.5, 1.5]} material={mat('#ff4d2e', { emissive: '#ff2a00', emissiveIntensity: 1.2, roughness: 0.1 })}>
+          <Keeper skin="#f2d0b0" shirt="#c21a2e" pants="#3a0a14" hat="wizard" face="smile" />
+          <Block size={[0.8, 0.5, 0.8]} position={[1.8, COUNTER_TOP, 1.5]} base m="#2a1a3a" />
+          <mesh position={[1.8, COUNTER_TOP + 1.05, 1.5]} material={mat('#ff4d2e', { emissive: '#ff2a00', emissiveIntensity: 1.2, roughness: 0.1 })}>
             <sphereGeometry args={[0.55, 16, 12]} />
           </mesh>
-          <Block size={[0.8, 0.5, 0.8]} position={[1.8, 1.85, 1.5]} base m="#2a1a3a" />
-          <Glow position={[1.8, 2.5, 1.5]} color="#ff4d2e" size={3} opacity={0.6} />
-          {[
-            ['#ff7a1f', -2.7],
-            ['#7fe3ff', -0.9],
-            ['#b35bff', 0.9],
-            ['#3fdc3f', 2.7],
-          ].map(([c, x], i) => (
-            <Floaty key={c} position={[x, 8, 0.5]} amp={0.3} speed={1.2 + i * 0.2}>
-              <mesh material={mat(c, { emissive: c, emissiveIntensity: 0.8 })}>
-                <icosahedronGeometry args={[0.55, 0]} />
-              </mesh>
-              <Glow position={[0, 0, 0]} color={c} size={2.4} opacity={0.5} />
-            </Floaty>
-          ))}
+          <Glow position={[1.8, COUNTER_TOP + 1.05, 1.5]} color="#ff4d2e" size={3} opacity={0.6} />
         </Stall>
         <StallSign text="ENCHANT" icon="✨" width={STALL_W} frame="#b35bff" colors={['#ffd6ff', '#d04dff']} stroke="#2a0a4a" />
       </group>
 
-      {/* Skill Index: a gold stall with the sage's statue and halo. */}
-      <group position={skillIndex.pos}>
+      {/* Skill Index */}
+      <group position={skillIndex.pos} scale={STALL_SCALE}>
         <Stall width={STALL_W} stripes={['#ffd23b', '#ffffff']} mat="#ff9a1f">
-          <Npc position={[0, 0, -0.4]} skin="#b8c0cf" shirt="#9aa3b5" pants="#8a93a6" face="smile" />
-          <Floaty position={[0, 7.6, -1.6]} amp={0.15} spin={0.8}>
-            <mesh material={mat('#ffd23b', { emissive: '#ffb000', emissiveIntensity: 0.8, metalness: 0.4 })}>
-              <torusGeometry args={[1.3, 0.16, 8, 32]} />
-            </mesh>
-          </Floaty>
-          <Glow position={[0, 7.6, -1.4]} color="#fff3a0" size={5} opacity={0.4} />
+          <Keeper skin="#b8c0cf" shirt="#9aa3b5" pants="#8a93a6" face="smile" />
         </Stall>
         <StallSign text="SKILL INDEX" icon="📜" width={STALL_W} frame="#ff9a1f" colors={['#fff27a', '#ffc629']} stroke="#4a2a00" />
       </group>
@@ -358,7 +289,7 @@ export const Hub = memo(function Hub() {
       <Ground />
       <Fountain />
       <CastleWalls />
-      <FrostboundTower />
+      <FrostboundTower wall={WALL} />
       <Stations />
       <Forge />
       <DungeonPortal />

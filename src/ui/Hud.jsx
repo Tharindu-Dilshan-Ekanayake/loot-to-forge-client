@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 
 import { sfx } from '../audio/sound'
 import { useBloxity } from '../bloxity/BloxityContext'
-import { guestName } from '../bloxity/guest'
+import { guestName, lookOrGuest, skinHeadshot } from '../bloxity/guest'
 import { identityAvatarUrl } from '../bloxity/sdk'
 import { fx } from '../game/bus'
 import { getRoom } from '../net/network'
@@ -208,13 +208,23 @@ function TutorialStrip() {
 
 /** The player's picture and name, as a pill at the top right. */
 function PlayerTag() {
-  const { identity } = useBloxity()
+  const { identity, isLoggedIn, avatar } = useBloxity()
   const name = useGame((s) => s.profile?.name) || guestName()
-  const pfp = identityAvatarUrl(identity)
+  // The Bloxity picture when signed in, else the face off the character's own skin.
+  const [face, setFace] = useState(null)
+  const skinId = lookOrGuest(avatar).skinId
+  useEffect(() => {
+    let live = true
+    Promise.resolve(skinHeadshot(skinId)).then((url) => live && setFace(url))
+    return () => {
+      live = false
+    }
+  }, [skinId])
+  const pfp = (isLoggedIn && identityAvatarUrl(identity)) || face
   return (
     <div className="flex h-[58px] items-center gap-3 self-center rounded-full bg-[#2a2c3a]/90 py-1 pl-1 pr-5 shadow-[0_3px_0_rgba(0,0,0,0.35)]">
       {pfp ? (
-        <img src={pfp} alt="" className="h-[50px] w-[50px] rounded-full bg-[#5a6070] object-cover" />
+        <img src={pfp} alt="" className="h-[50px] w-[50px] rounded-full bg-[#5a6070] object-cover" style={{ imageRendering: 'pixelated' }} />
       ) : (
         <div className="grid h-[50px] w-[50px] place-items-center rounded-full bg-[#2f7dff]">
           <St className="text-2xl">{name[0]?.toUpperCase()}</St>

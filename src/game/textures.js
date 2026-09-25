@@ -442,7 +442,7 @@ export function textTexture(text, { colors = ['#ffffff', '#ffffff'], stroke = '#
  * A painted shop signboard: wooden planks in a coloured frame with gold bolts
  * and the shop's name lettered across it. The texture is 4:1.
  */
-export function signboardTexture(text, { frame = '#ffd23b', colors = ['#fff27a', '#ffb000'], stroke = '#3a1a00', icon = '' } = {}) {
+export function signboardTexture(text, { frame = '#ffd23b', colors = ['#fff27a', '#ffb000'], stroke = '#3a1a00', icon = '', planks: plankColors = ['#86532a', '#7a4a24'] } = {}) {
   const W = 1024
   const H = 256
   const c = document.createElement('canvas')
@@ -453,7 +453,7 @@ export function signboardTexture(text, { frame = '#ffd23b', colors = ['#fff27a',
   const planks = 4
   for (let i = 0; i < planks; i += 1) {
     const y = (H / planks) * i
-    ctx.fillStyle = i % 2 ? '#7a4a24' : '#86532a'
+    ctx.fillStyle = plankColors[i % 2]
     ctx.fillRect(0, y, W, H / planks)
     ctx.fillStyle = 'rgba(0,0,0,0.28)'
     ctx.fillRect(0, y, W, 3)
