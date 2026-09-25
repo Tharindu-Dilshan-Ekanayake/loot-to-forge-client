@@ -1,7 +1,7 @@
 import { useGLTF } from '@react-three/drei'
-import { useFrame } from '@react-three/fiber'
+import { createPortal, useFrame } from '@react-three/fiber'
 import { forwardRef, useEffect, useMemo, useRef, useState } from 'react'
-import { Box3, MeshStandardMaterial, Vector3 } from 'three'
+import { Box3, Group, Matrix4, MeshStandardMaterial, Quaternion, Vector3 } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 
 import {
@@ -13,6 +13,8 @@ import {
 } from '../bloxity/avatarAssets'
 import { loadOBJ, loadPartGLB, loadTexture } from '../bloxity/avatarLoader'
 import { useBloxity } from '../bloxity/BloxityContext'
+import { lookOrGuest, skinUrl } from '../bloxity/guest'
+import { DEFAULT_PROPORTIONS } from '../bloxity/store'
 import {
   animateRig,
   applyPart,
@@ -20,7 +22,12 @@ import {
   applySkin,
   attachAccessory,
   collectRig,
+  READY_POSE,
 } from './avatarRig'
+import BagModel from './entities/BagModel'
+import WeaponModel from './entities/WeaponModel'
+import { weaponLook } from './weaponTier'
+import { local } from './bus'
 
 /**
  * Keeps the avatar breathing when it is rendered outside the game (a menu preview,
@@ -33,7 +40,29 @@ function fallbackMotion(delta) {
 }
 
 /**
- * The player's own Bloxity avatar, assembled at runtime.
+ * How a weapon sits in the fist, in character space. Aimed so that in the ready
+ * pose the blade juts out past the sword hip (+X), forward and up, edge down,
+ * like a Roblox sword-sim stance.
+ */
+const GRIP_QUAT = (() => {
+  const arm = new Quaternion()
+    .setFromAxisAngle(new Vector3(1, 0, 0), READY_POSE.shoulder)
+    .multiply(new Quaternion().setFromAxisAngle(new Vector3(0, 0, 1), READY_POSE.out))
+    .multiply(new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), READY_POSE.elbow))
+    .invert()
+  const blade = new Vector3(0.32, 0.72, 0.62).normalize().applyQuaternion(arm)
+  const down = new Vector3(0, -1, 0.2).applyQuaternion(arm)
+  // The blade's edge is its local +X: point it as close to `down` as the blade allows.
+  const edge = down.addScaledVector(blade, -down.dot(blade)).normalize()
+  const flat = new Vector3().crossVectors(edge, blade)
+  return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(edge, blade, flat))
+})()
+const _scale = new Vector3()
+/** Chunky, Roblox-sized weapons read better than true-to-scale ones. */
+const WEAPON_SCALE = 2.05
+
+/**
+ * A Bloxity avatar, assembled at runtime.
  *
  * `player.glb` is the base humanoid rig: six skinned meshes (head, torso, two arms,
  * two legs) sharing one skeleton. Assembly means, per equipped slot:
@@ -41,21 +70,32 @@ function fallbackMotion(delta) {
  *   - hat / back  -> attach an OBJ to the Neck1 / Spine2 bone
  *   - skin        -> set one texture as the map on every skinned mesh
  *
- * Any slot that is unequipped or 404s leaves the base body's own part in place. The
- * whole thing re-assembles when `onAvatarChanged` / `onProportionsChanged` fire, so
- * changing cosmetics in the Bloxity portal updates the character live.
+ * The local player's avatar comes from the Bloxity session; remote players pass
+ * their `equipped` / `proportions` in explicitly (they arrive over the network).
  *
- * @param {{ onReady?: () => void, targetHeight?: number }} props
- *   `targetHeight` is the world-space height to fit the avatar into, in the game's
- *   own units. Bloxity authors the rig ~6.4 units tall with the feet at y=0, which is
- *   far bigger than a metric-scale physics capsule, so the model is measured and
- *   rescaled rather than trusted at native size.
+ * @param {{ onReady?: () => void, targetHeight?: number, weaponId?: string,
+ *           equipped?: object, proportions?: object, isLocal?: boolean }} props
  */
 export const PlayerAvatar = forwardRef(function PlayerAvatar(
-  { onReady, targetHeight = 1.8, motionRef, ...props },
+  {
+    onReady,
+    targetHeight = 1.8,
+    motionRef,
+    weaponId,
+    /** Weapon tier (weaponTier.js): bigger, more colourful and glowier with Damage. */
+    weaponTier = 0,
+    bagId,
+    equipped: equippedProp,
+    proportions: proportionsProp,
+    isLocal = true,
+    ...props
+  },
   ref,
 ) {
-  const { avatar: equipped, proportions, game } = useBloxity()
+  const session = useBloxity()
+  const equipped = useMemo(() => (isLocal ? lookOrGuest(session.avatar) : equippedProp), [isLocal, session.avatar, equippedProp])
+  const proportions = isLocal ? session.proportions : proportionsProp || DEFAULT_PROPORTIONS
+  const { game } = session
   const { scene: baseScene } = useGLTF(BASE_BODY_URL)
   const [assembled, setAssembled] = useState(false)
 
@@ -83,6 +123,32 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
     return collected
   }, [character])
 
+  // A holder parented to the forearm bone; the weapon is portalled into it.
+  // Created in a memo but attached in an effect, so StrictMode's double render
+  // can't leave a stray holder on the bone.
+  const hand = useMemo(() => (rig.hand ? new Group() : null), [rig])
+  useEffect(() => {
+    if (!hand) return undefined
+    hand.position.copy(rig.hand.offset)
+    hand.quaternion.copy(rig.hand.relInv).multiply(GRIP_QUAT)
+    rig.hand.bone.add(hand)
+    return () => rig.hand.bone.remove(hand)
+  }, [hand, rig])
+
+  // Same idea for the backpack, on the spine bone behind the torso.
+  const back = useMemo(() => (rig.back ? new Group() : null), [rig])
+  useEffect(() => {
+    if (!back) return undefined
+    back.position.copy(rig.back.offset)
+    back.quaternion.copy(rig.back.relInv)
+    rig.back.bone.add(back)
+    if (isLocal) local.bag = back
+    return () => {
+      rig.back.bone.remove(back)
+      if (local.bag === back) local.bag = null
+    }
+  }, [back, rig, isLocal])
+
   // Measured once, from the bind pose, before proportions touch the root scale.
   const fit = useMemo(() => {
     const box = new Box3().setFromObject(character)
@@ -101,13 +167,13 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
     // hat/back can be removed rather than stacking up.
     const attached = []
 
-    game.loadingStep('Loading avatar…')
+    if (isLocal) game.loadingStep('Loading avatar…')
 
     const jobs = []
 
     // Skin always loads - "0" is the fallback, since the base body has no baked map.
     jobs.push(
-      loadTexture(assetUrls.skinTexture(skinIdOrDefault(equipped?.skinId))).then(
+      loadTexture(skinUrl(skinIdOrDefault(equipped?.skinId))).then(
         (texture) => ({ kind: 'skin', texture }),
       ),
     )
@@ -183,9 +249,9 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
         object.traverse((child) => child.geometry?.dispose())
       }
     }
-  }, [rig, equipped, game])
+  }, [rig, equipped, game, isLocal])
 
-  // --- Proportions -------------------------------------------------------------
+  // --- Proportions + animation -------------------------------------------------
   // Applied per frame rather than in an effect: every bone is reset to its rest pose
   // and re-scaled each pass, which keeps it idempotent and survives anything else
   // that touches the skeleton.
@@ -198,6 +264,17 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
       // animation then rotates on top of that clean base.
       applyProportions(rig, proportionsRef.current)
       animateRig(rig, motionRef?.current ?? fallbackMotion(delta))
+      if (hand?.parent) {
+        // The weapon is modelled in world units; cancel the rig's scale so it
+        // isn't shrunk by the avatar fit or stretched by arm proportions.
+        hand.parent.getWorldScale(_scale)
+        const s = (WEAPON_SCALE * weaponLook(weaponTier).scale) / ((_scale.x + _scale.y + _scale.z) / 3)
+        hand.scale.setScalar(s)
+      }
+      if (back?.parent) {
+        back.parent.getWorldScale(_scale)
+        back.scale.setScalar((targetHeight / 1.8) / ((_scale.x + _scale.y + _scale.z) / 3))
+      }
     } catch {
       // A malformed payload must not kill the render loop.
     }
@@ -215,6 +292,8 @@ export const PlayerAvatar = forwardRef(function PlayerAvatar(
       <group scale={fit.scale} position={[0, fit.footOffset, 0]}>
         <primitive object={character} />
       </group>
+      {hand && weaponId && createPortal(<WeaponModel weaponId={weaponId} tier={weaponTier} />, hand)}
+      {back && bagId && createPortal(<BagModel bagId={bagId} isLocal={isLocal} />, back)}
     </group>
   )
 })

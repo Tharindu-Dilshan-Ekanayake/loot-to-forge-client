@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react'
 
 import { BloxityContext } from './BloxityContext'
-import { getSDK, safeCall, toUnsubscribe, waitForSDK } from './sdk'
+import { getSDK, identityName, safeCall, toUnsubscribe, waitForSDK } from './sdk'
 import { DEFAULT_PROPORTIONS, useBloxityStore } from './store'
 
 /**
@@ -163,6 +163,15 @@ export function BloxityProvider({ gameSlug, children }) {
         if (!s.equipped) {
           s.setEquipped(safeCall(sdk.avatar.getEquipped?.bind(sdk.avatar)) || null)
         }
+
+        // One line in devtools to confirm exactly what the SDK handed us — if the
+        // name or avatar still looks wrong once a real game slug is set, the field
+        // names above (identityName / identityAvatarUrl) are the place to widen.
+        const seen = useBloxityStore.getState()
+        console.info('[bloxity] signed in as', identityName(seen.user || seen.guest), {
+          user: seen.user,
+          guest: seen.guest,
+        })
 
         useBloxityStore.getState().setStatus('ready')
       })

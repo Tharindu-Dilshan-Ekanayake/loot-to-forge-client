@@ -97,6 +97,41 @@ export function toUnsubscribe(maybeUnsubscribe) {
   return () => {}
 }
 
+/**
+ * The SDK doesn't document one fixed shape for a user/guest object, so read a
+ * display name defensively across the field names different SDK builds use.
+ */
+export function identityName(identity) {
+  return (
+    identity?.displayName ||
+    identity?.username ||
+    identity?.name ||
+    identity?.nickname ||
+    identity?.nickName ||
+    identity?.handle ||
+    identity?.tag ||
+    null
+  )
+}
+
+/** Same idea for a profile picture: try every field name an SDK build might use. */
+export function identityAvatarUrl(identity) {
+  const candidates = [
+    identity?.pfp,
+    identity?.avatarUrl,
+    identity?.photoUrl,
+    identity?.photo,
+    identity?.pictureUrl,
+    identity?.picture,
+    identity?.imageUrl,
+    identity?.image,
+    identity?.thumbnailUrl,
+    identity?.thumbnail,
+    identity?.avatar,
+  ]
+  return candidates.find((v) => typeof v === 'string' && v.length > 0) || null
+}
+
 /** Calls `fn` if it exists, swallowing SDK-side errors so they can't kill a render. */
 export function safeCall(fn, ...args) {
   if (typeof fn !== 'function') return undefined

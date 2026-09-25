@@ -20,6 +20,12 @@ const KEY_MAP = {
   ShiftRight: 'sprint',
 }
 
+/** True while focus is in a text field. */
+export const isTyping = (e) => {
+  const t = e?.target || document.activeElement
+  return t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)
+}
+
 export function useKeyboard() {
   const keys = useRef({
     forward: false,
@@ -37,6 +43,8 @@ export function useKeyboard() {
     }
 
     const onKeyDown = (e) => {
+      // Typing in a text field must not walk the character around.
+      if (isTyping(e)) return
       if (KEY_MAP[e.code]) e.preventDefault() // stop Space scrolling the page
       set(e.code, true)
     }
