@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { prepareAudio, setVolumes, unlockAudio } from './audio/sound'
+import { useBloxity } from './bloxity/BloxityContext'
 import GameScene from './game/GameScene'
 import { setLabelLayer } from './game/labels'
+import { getJoinedKey } from './net/network'
 import { useGame } from './net/store'
 import Hud from './ui/Hud'
 import { ForgeCinematic } from './ui/panels/ForgePanel'
@@ -25,6 +27,27 @@ function useFontsReady() {
     return () => clearTimeout(timeout)
   }, [])
   return ready
+}
+
+/**
+ * Safety net for a slow Bloxity handshake: if the game joined as a guest and the
+ * player's real account turns up afterwards, rejoin as that account (one reload,
+ * like the refresh that used to be needed), so their name, avatar and progress
+ * are theirs. Guarded so it can never loop.
+ */
+function RejoinAsAccount() {
+  const { isLoggedIn } = useBloxity()
+  useEffect(() => {
+    if (!isLoggedIn || !getJoinedKey().startsWith('guest:')) return
+    try {
+      if (sessionStorage.getItem('ltf.rejoined')) return
+      sessionStorage.setItem('ltf.rejoined', '1')
+    } catch {
+      return
+    }
+    window.location.reload()
+  }, [isLoggedIn])
+  return null
 }
 
 /** Keeps sound-effect volume in step with settings and unlocks audio on the first gesture. */
@@ -64,6 +87,7 @@ function App() {
       <div id="labels" ref={setLabelLayer} className={showNames ? '' : 'hidden-names'} />
       {fontsReady && <GameScene />}
       <AudioDirector />
+      <RejoinAsAccount />
       {playing && (
         <>
           <Hud />

@@ -34,6 +34,10 @@ async function makeClient() {
 
 export const getRoom = () => room
 
+/** The save key this session joined with ('guest:…' or 'bloxity:…'), '' before joining. */
+let joinedKey = ''
+export const getJoinedKey = () => joinedKey
+
 /** Throttled, fire-and-forget message to the server. */
 export function send(type, payload) {
   if (!room) return
@@ -275,6 +279,7 @@ export async function connect({ name, key, avatar, pfp }) {
     const c = await makeClient()
     const options = { name, key, avatar, pfp }
     room = await c.joinOrCreate(ROOM_NAME, options)
+    joinedKey = String(key || '')
   } catch (err) {
     console.error('[net] join failed', err)
     room = null

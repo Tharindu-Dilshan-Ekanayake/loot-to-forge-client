@@ -23,8 +23,11 @@ function playerKey(identity, isLoggedIn) {
   }
 }
 
-/** How long to wait for the Bloxity session before joining as a guest anyway. */
-const SESSION_WAIT_MS = 4000
+/**
+ * How long to wait for the Bloxity session before joining as a guest anyway.
+ * A little over the provider's own settle timeout (BloxityProvider.jsx).
+ */
+const SESSION_WAIT_MS = 6000
 
 /** Tips that rotate under the loading bar. */
 const TIPS = [
