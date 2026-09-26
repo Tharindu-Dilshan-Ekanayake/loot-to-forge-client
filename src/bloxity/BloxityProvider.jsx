@@ -11,6 +11,13 @@ import { DEFAULT_PROPORTIONS, useBloxityStore } from './store'
  */
 let initPromise = null
 
+/**
+ * How long 'ready' waits for the portal's handshake (who is playing) before
+ * giving up and treating the player as a guest. Kept under the loading screen's
+ * own wait (LoadingScreen.jsx SESSION_WAIT_MS).
+ */
+const SESSION_SETTLE_MS = 4500
+
 /** Slots the SDK's equipped payload carries beyond the skin. */
 const PART_ID_KEYS = [
   'hatId',
@@ -105,11 +112,52 @@ export function BloxityProvider({ gameSlug, children }) {
         const readEquipped = () =>
           safeCall(sdk.avatar.getEquipped?.bind(sdk.avatar)) || null
 
+        // `init()` returns before the portal has answered, so at this instant the
+        // SDK doesn't yet know who is playing: the first `onUserChanged` (below)
+        // always reports "nobody", and only the handshake that follows carries the
+        // real user and their avatar. Reporting 'ready' now made the game join as
+        // a guest ("Viper54") and the real name only showed after a refresh. So
+        // 'ready' waits for the session to actually settle:
+        //   embedded in bloxity.io -> the handshake (the second notification, or a
+        //                             notification that already names the user)
+        //   standalone with a saved token -> the user fetched with that token
+        //   standalone without one -> nothing to wait for
+        // with a timeout, so a slow or missing portal can never hold the game up.
+        let settled = false
+        let calls = 0
+        let timer = null
+        const settle = () => {
+          if (settled || cancelled) return
+          settled = true
+          clearTimeout(timer)
+          // Seed anything the subscriptions didn't fire synchronously.
+          const s = useBloxityStore.getState()
+          if (!s.guest) s.setGuest(safeCall(sdk.auth.getGuest?.bind(sdk.auth)) || null)
+          if (!s.equipped) s.setEquipped(readEquipped())
+          // One line in devtools to confirm exactly what the SDK handed us.
+          const seen = useBloxityStore.getState()
+          console.info('[bloxity] signed in as', identityName(seen.user || seen.guest), {
+            user: seen.user,
+            guest: seen.guest,
+          })
+          useBloxityStore.getState().setStatus('ready')
+        }
+        let embedded = false
+        try {
+          embedded = window.self !== window.top
+        } catch {
+          embedded = true // cross-origin parent: definitely framed
+        }
+        const waitingForToken = !embedded && Boolean(safeCall(sdk.auth.getToken?.bind(sdk.auth)))
+        const needsWait = embedded || waitingForToken
+        if (needsWait) timer = setTimeout(settle, SESSION_SETTLE_MS)
+
         // Auth. Fires immediately with the current user (or null), then on every
         // login/logout.
         unsubscribers.push(
           toUnsubscribe(
             sdk.auth.onUserChanged((nextUser) => {
+              calls += 1
               useBloxityStore.getState().setUser(nextUser || null)
               // The guest identity is what the HUD falls back to when signed out.
               useBloxityStore
@@ -124,6 +172,10 @@ export function BloxityProvider({ gameSlug, children }) {
               useBloxityStore
                 .getState()
                 .setProportions(safeCall(sdk.avatar.getProportions?.bind(sdk.avatar)))
+
+              // The session is known: the handshake has answered (or the saved
+              // token has resolved to a user).
+              if (needsWait && (nextUser || (embedded && calls > 1))) settle()
             }),
           ),
         )
@@ -157,23 +209,8 @@ export function BloxityProvider({ gameSlug, children }) {
           ),
         )
 
-        // Seed anything the subscriptions didn't fire synchronously.
-        const s = useBloxityStore.getState()
-        if (!s.guest) s.setGuest(safeCall(sdk.auth.getGuest?.bind(sdk.auth)) || null)
-        if (!s.equipped) {
-          s.setEquipped(safeCall(sdk.avatar.getEquipped?.bind(sdk.avatar)) || null)
-        }
-
-        // One line in devtools to confirm exactly what the SDK handed us — if the
-        // name or avatar still looks wrong once a real game slug is set, the field
-        // names above (identityName / identityAvatarUrl) are the place to widen.
-        const seen = useBloxityStore.getState()
-        console.info('[bloxity] signed in as', identityName(seen.user || seen.guest), {
-          user: seen.user,
-          guest: seen.guest,
-        })
-
-        useBloxityStore.getState().setStatus('ready')
+        // Nothing to wait for (standalone, no saved token): ready now.
+        if (!needsWait) settle()
       })
       .catch((err) => {
         if (cancelled) return
